@@ -90,7 +90,7 @@ final class LauncherModel: ObservableObject {
 
     func start(_ tile: Tile) {
         guard !launching.contains(tile.id) else { return }
-        guard run(CLI.args(for: tile.action), what: "Lancement de \(tile.name)") else { return }
+        guard run(CLI.args(for: tile.action), what: "Lancement de \(tile.name)", isLaunch: true) else { return }
         launching.insert(tile.id)
         Task {
             try? await Task.sleep(for: .seconds(6))   // a launcher takes a few seconds to show its window
@@ -117,12 +117,15 @@ final class LauncherModel: ObservableObject {
 
     /// Runs the CLI; on exit reports a failure, refreshes the bottles (unless told not to), then calls `then(succeeded)`.
     @discardableResult
-    private func run(_ args: [String], what: String, refreshing: Bool = true,
+    private func run(_ args: [String], what: String, refreshing: Bool = true, isLaunch: Bool = false,
                      then: @escaping @MainActor (Bool) -> Void = { _ in }) -> Bool {
+        let started = Date()
         do {
             try CLI.run(args) { status in
                 Task { @MainActor in
-                    if status != 0 { self.failure = "\(what) : échec (code \(status)), voir ~/Library/Logs/Cuvee.log" }
+                    // a launcher's own exit code arrives when it quits, maybe hours later: only an early exit is a failed launch
+                    let failed = status != 0 && (!isLaunch || Date().timeIntervalSince(started) < 15)
+                    if failed { self.failure = "\(what) : échec (code \(status)), voir ~/Library/Logs/Cuvee.log" }
                     if refreshing { self.refresh() }
                     then(status == 0)
                 }

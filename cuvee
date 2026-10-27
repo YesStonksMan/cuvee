@@ -12,7 +12,7 @@
 #   cuvee settings NAME            show the settings of bottle NAME
 #   cuvee set NAME KEY VALUE       graphics vulkan|opengl|dxmt, metalfx on|off (needs dxmt)
 #   cuvee import NAME              clone a CrossOver bottle (no extra disk)
-#   cuvee steam [NAME]             install (first time) and launch Steam in bottle NAME (default: Steam)
+#   cuvee steam                    install (first time) and launch Steam in the bottle "Steam"
 #   cuvee game NAME APPID          launch Steam game APPID in bottle NAME (same path as Steam's Play button)
 #   cuvee run NAME PROGRAM [ARGS]  run a Windows program in bottle NAME
 #   cuvee cfg NAME                 open winecfg for bottle NAME
@@ -165,10 +165,15 @@ fetch() { # ID FILE URL -> prints the cached path; downloads only what is missin
   mkdir -p "$dir"
   if [ ! -s "$dir/$2" ]; then
     echo "downloading $2..." >&2
-    curl -fL --retry 3 -o "$dir/$2.part" "$3" >&2
-    mv "$dir/$2.part" "$dir/$2"
+    curl -fL --retry 3 -o "$dir/$2.$$.part" "$3" >&2   # per-process: two installs may fetch the same file
+    mv "$dir/$2.$$.part" "$dir/$2"
   fi
   echo "$dir/$2"
+}
+
+bnet_lang() { # the Mac's language as Battle.net spells it (frFR), English when it has no such locale
+  local l; l="$(defaults read -g AppleLocale 2>/dev/null)"; l="${l%%@*}"; l="${l/_/}"
+  case "$l" in deDE|enGB|enUS|esES|esMX|frFR|itIT|jaJP|koKR|plPL|ptBR|ruRU|zhCN|zhTW) echo "$l" ;; *) echo enUS ;; esac
 }
 
 vcredist() { # Microsoft Visual C++ 2015-2022, which every launcher but Steam needs
@@ -185,13 +190,13 @@ add() { # ID
   setup="$(fetch "$1" "$L_FILE" "$L_URL")"
   echo "installing $L_NAME..."
   case "$1" in
-    steam)     "$WINE" "$setup" /S ;;
-    epic)      vcredist; "$WINE" msiexec /i "$("$WINE" winepath -w "$setup" | tr -d '\r')" /q ;;   # msiexec crashes on a raw unix path (MSI_OpenPackageW → CopyFileW)
-    ea)        vcredist; "$WINE" "$setup" EAX_LAUNCH_CLIENT=0 ;;
+    steam)     "$WINE" "$setup" /S || true ;;
+    epic)      vcredist; "$WINE" msiexec /i "$("$WINE" winepath -w "$setup" | tr -d '\r')" /q || true ;;   # msiexec crashes on a raw unix path (MSI_OpenPackageW → CopyFileW)
+    ea)        vcredist; "$WINE" "$setup" EAX_LAUNCH_CLIENT=0 || true ;;
     battlenet) vcredist
                "$WINE" reg add 'HKCU\Software\Wine\DllOverrides' /v systemsurvey.exe /d "" /f >/dev/null   # its system checker hangs
-               WINE_SIMULATE_WRITECOPY=1 WINE_WAIT_CHILD_PIPE_IGNORE=Agent.exe "$WINE" "$setup" --lang=frFR --installpath="C:\\Program Files (x86)\\Battle.net" ;;
-    ubisoft)   vcredist; "$WINE" "$setup" /S ;;
+               WINE_SIMULATE_WRITECOPY=1 WINE_WAIT_CHILD_PIPE_IGNORE=Agent.exe "$WINE" "$setup" --lang="$(bnet_lang)" --installpath="C:\\Program Files (x86)\\Battle.net" || true ;;
+    ubisoft)   vcredist; "$WINE" "$setup" /S || true ;;
   esac
   "$HERE/dist/bin/wineserver" -w
   [ -f "$exe" ] || die "$L_NAME install did not finish (no $L_EXE)"
@@ -202,7 +207,8 @@ add() { # ID
 open_cmd() { # NAME
   need_bottle "$1"; refresh; apply_settings
   local id; id="$(setting launcher)"
-  [ -z "$id" ] && [ "$1" = Steam ] && id=steam   # bottles from before launchers were recorded
+  # bottles imported or made before launchers were recorded
+  [ -z "$id" ] && [ -f "$WINEPREFIX/drive_c/Program Files (x86)/Steam/steam.exe" ] && id=steam
   [ -n "$id" ] || die "bottle '$1' has no launcher (use: cuvee run '$1' PROGRAM)"
   launcher "$id"
   cd "$(dirname "$WINEPREFIX/drive_c/$L_EXE")"
@@ -245,9 +251,7 @@ case "${1:-}" in
   remove)    remove "${2:-}" ;;
   settings)  settings_cmd "${2:-}" ;;
   set)       set_cmd "${2:-}" "${3:-}" "${4:-}" ;;
-  steam)     launcher steam; L_NAME="${2:-Steam}"; bottle "$L_NAME"
-             [ -f "$WINEPREFIX/drive_c/$L_EXE" ] || add steam
-             open_cmd "$L_NAME" ;;
+  steam)     add steam; open_cmd Steam ;;
   game)      need_bottle "${2:-}"; [[ "${3:-}" =~ ^[0-9]+$ ]] || die "steam appid required"; refresh; apply_settings
              cd "$WINEPREFIX/drive_c/Program Files (x86)/Steam"; exec "$WINE" steam.exe ${CUVEE_STEAM_ARGS:-} "steam://rungameid/$3" ;;
   run)       need_bottle "${2:-}"; shift 2; [ $# -gt 0 ] || die "program required"; refresh; apply_settings; exec "$WINE" "$@" ;;
