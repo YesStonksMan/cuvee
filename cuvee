@@ -52,10 +52,11 @@ setting() { # KEY [DEFAULT]
   echo "${2:-}"
 }
 
-set_setting() { # KEY VALUE
+set_setting() { # KEY VALUE; locked: the app runs two `cuvee set` at once and each one rewrites the whole file
   local conf="$WINEPREFIX/cuvee.conf"
-  { [ -f "$conf" ] && grep -v "^$1=" "$conf" || true; echo "$1=$2"; } > "$conf.new"
-  mv "$conf.new" "$conf"
+  lockf -k -t 10 "$conf.lock" /bin/bash -c \
+    '{ [ -f "$1" ] && grep -v "^$2=" "$1" || true; echo "$2=$3"; } > "$1.new" && mv "$1.new" "$1"' _ "$conf" "$1" "$2" \
+    || die "could not write $conf"
 }
 
 apply_settings() { # environment for the bottle's settings and launcher, read at every launch
