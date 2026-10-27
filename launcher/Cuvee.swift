@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Cuvee window: one section per bottle (its launcher, plus the games of Steam bottles), "+" to add a launcher
-// or an empty bottle, and per-bottle settings and removal. Every action calls the installed runtime CLI.
+// Cuvee window: a sidebar (search, all games, launchers to start or install, bottles, bug reporting) and the selected
+// page. Every action calls the installed runtime CLI.
 import AppKit
 import SwiftUI
 
@@ -31,15 +31,15 @@ struct TileView: View {
                     .shadow(color: .black.opacity(hovered ? 0.45 : 0.25), radius: hovered ? 14 : 6, y: hovered ? 8 : 3)
                 Text(tile.name)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.92))
                     .lineLimit(1)
                     .frame(width: 150, alignment: .leading)
             }
             .scaleEffect(hovered ? 1.03 : 1)
         }
         .buttonStyle(.plain)
-        .onHover { over in withAnimation(.spring(duration: 0.25, bounce: 0.15)) { onHover(over) } }
-        .accessibilityLabel("Lancer \(tile.name)")
+        .onHover { over in withAnimation(.spring(duration: 0.25, bounce: 0)) { onHover(over) } }
+        .help(tile.name)
+        .accessibilityLabel(tr("Lancer \(tile.name)", "Launch \(tile.name)"))
     }
 
     @ViewBuilder private var artwork: some View {
@@ -63,155 +63,155 @@ struct TileView: View {
             Color.black.opacity(0.55)
             VStack(spacing: 8) {
                 ProgressView().controlSize(.small).tint(.white)
-                Text("Lancement…").font(.system(size: 12, weight: .medium)).foregroundStyle(.white)
+                Text(tr("Lancement…", "Launching…")).font(.system(size: 12, weight: .medium)).foregroundStyle(.white)
             }
         }
     }
 }
 
-// Plain ObservableObject: SwiftUI's @Observable macro needs Xcode's plugins, absent with Command Line Tools.
-@MainActor
-final class LauncherModel: ObservableObject {
-    @Published var bottles = Library.bottles()
-    @Published var installing: Set<String> = []
-    @Published var launching: Set<String> = []
-    @Published var hovered: String?
-    @Published var failure: String?
-    @Published var adding = false
-    @Published var editing: Bottle?
-    @Published var removing: Bottle?
-
-    func refresh() {
-        let fresh = Library.bottles()
-        if fresh != bottles { bottles = fresh }
-    }
-
-    func installed(_ kind: LauncherKind) -> Bool { bottles.contains { $0.launcher == kind.id } }
-
-    func start(_ tile: Tile) {
-        guard !launching.contains(tile.id) else { return }
-        guard run(CLI.args(for: tile.action), what: "Lancement de \(tile.name)", isLaunch: true) else { return }
-        launching.insert(tile.id)
-        Task {
-            try? await Task.sleep(for: .seconds(6))   // a launcher takes a few seconds to show its window
-            launching.remove(tile.id)
-        }
-    }
-
-    func install(_ kind: LauncherKind) {
-        if run(["add", kind.id], what: "Installation de \(kind.bottle)", then: { _ in self.installing.remove(kind.id) }) {
-            installing.insert(kind.id)
-        }
-    }
-
-    func create(_ name: String) { run(["create", name], what: "Création de « \(name) »") }
-
-    func remove(_ bottle: Bottle) { run(["remove", bottle.name], what: "Suppression de « \(bottle.name) »") }
-
-    func save(_ bottle: Bottle, graphics: Graphics, metalFX: Bool) {
-        let what = "Réglages de « \(bottle.name) »"
-        run(["set", bottle.name, "graphics", graphics.rawValue], what: what, refreshing: false) { ok in
-            if ok { self.run(["set", bottle.name, "metalfx", metalFX ? "on" : "off"], what: what) } else { self.refresh() }
-        }
-    }
-
-    /// Runs the CLI; on exit reports a failure, refreshes the bottles (unless told not to), then calls `then(succeeded)`.
-    @discardableResult
-    private func run(_ args: [String], what: String, refreshing: Bool = true, isLaunch: Bool = false,
-                     then: @escaping @MainActor (Bool) -> Void = { _ in }) -> Bool {
-        let started = Date()
-        do {
-            try CLI.run(args) { status in
-                Task { @MainActor in
-                    // a launcher's own exit code arrives when it quits, maybe hours later: only an early exit is a failed launch
-                    let failed = status != 0 && (!isLaunch || Date().timeIntervalSince(started) < 15)
-                    if failed { self.failure = "\(what) : échec (code \(status)), voir ~/Library/Logs/Cuvee.log" }
-                    if refreshing { self.refresh() }
-                    then(status == 0)
-                }
-            }
-            failure = nil
-            return true
-        } catch {
-            failure = "\(what) : \(error.localizedDescription)"
-            return false
-        }
-    }
-}
-
-struct BottleSection: View {
-    let bottle: Bottle
+struct Sidebar: View {
     @ObservedObject var model: LauncherModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                Text(bottle.name).font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
-                Text(bottle.graphics.label + (bottle.metalFX ? " · MetalFX" : ""))
-                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.5))
-                Spacer()
-                Button { model.editing = bottle } label: { Image(systemName: "gearshape") }
-                    .help("Réglages")
-                Button { model.removing = bottle } label: { Image(systemName: "trash") }
-                    .help("Mettre à la Corbeille")
+        List(selection: $model.page) {
+            Section(tr("Bibliothèque", "Library")) {
+                Label(tr("Tous les jeux", "All games"), systemImage: "square.grid.2x2").tag(Page.library)
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.white.opacity(0.75))
-            if bottle.tiles.isEmpty {
-                Text("Bouteille vide.").font(.system(size: 13)).foregroundStyle(.white.opacity(0.6))
-            } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 150), spacing: 24, alignment: .top)],
-                          alignment: .leading, spacing: 28) {
-                    ForEach(bottle.tiles) { tile in
-                        TileView(tile: tile, launching: model.launching.contains(tile.id),
-                                 hovered: model.hovered == tile.id,
-                                 onHover: { over in model.hovered = over ? tile.id : nil }) { model.start(tile) }
+            Section(tr("Lanceurs", "Launchers")) {
+                ForEach(LauncherKind.all.filter { model.matches($0.bottle) }) { kind in
+                    if let bottle = model.bottle(for: kind) {
+                        installedRow(kind, bottle).tag(Page.bottle(bottle.name))
+                    } else {
+                        missingRow(kind)
                     }
                 }
+            }
+            Section {
+                ForEach(model.plainBottles.filter { model.matches($0.name) }) { bottle in
+                    Label(bottle.name, systemImage: "shippingbox").tag(Page.bottle(bottle.name))
+                }
+            } header: {
+                HStack {
+                    Text(tr("Bouteilles", "Bottles"))
+                    Spacer()
+                    Button { model.creating = true } label: { Image(systemName: "plus") }
+                        .buttonStyle(.borderless)
+                        .help(tr("Nouvelle bouteille vide", "New empty bottle"))
+                        .accessibilityLabel(tr("Nouvelle bouteille vide", "New empty bottle"))
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom) {
+            List(selection: $model.page) {
+                Label(tr("Signaler un bug", "Report a bug"), systemImage: "ladybug").tag(Page.bug)
+            }
+            .listStyle(.sidebar)
+            .scrollDisabled(true)
+            .frame(height: 44)
+        }
+        .navigationSplitViewColumnWidth(min: 210, ideal: 230, max: 300)
+    }
+
+    private func installedRow(_ kind: LauncherKind, _ bottle: Bottle) -> some View {
+        HStack {
+            Label(kind.bottle, systemImage: "gamecontroller")
+            Spacer()
+            if let opener = bottle.tiles.first(where: { if case .open = $0.action { true } else { false } }) {
+                if model.launching.contains(opener.id) {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Button { model.start(opener) } label: { Image(systemName: "play.fill") }
+                        .buttonStyle(.borderless)
+                        .help(tr("Démarrer \(kind.bottle)", "Start \(kind.bottle)"))
+                        .accessibilityLabel(tr("Démarrer \(kind.bottle)", "Start \(kind.bottle)"))
+                }
+            }
+        }
+    }
+
+    private func missingRow(_ kind: LauncherKind) -> some View {
+        HStack {
+            Label(kind.bottle, systemImage: "gamecontroller").foregroundStyle(.secondary)
+            Spacer()
+            if model.installing.contains(kind.id) {
+                ProgressView().controlSize(.small).help(tr("Installation…", "Installing…"))
+            } else {
+                Button(tr("Installer", "Install")) { model.install(kind) }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .help(tr("Installer \(kind.bottle) depuis le site de son éditeur", "Install \(kind.bottle) from its publisher's site"))
             }
         }
     }
 }
 
-struct QuickLaunchView: View {
+struct RootView: View {
     @StateObject private var model = LauncherModel()
+    @AppStorage(Language.key) private var language = Language.system.rawValue   // re-renders every text on change
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 32) {
-                HStack {
-                    Text("Cuvee").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
-                    Spacer()
-                    Button { model.adding = true } label: { Image(systemName: "plus").font(.system(size: 15, weight: .semibold)) }
-                        .buttonStyle(.borderless).foregroundStyle(.white.opacity(0.85))
-                        .help("Ajouter un lanceur ou une bouteille")
-                }
-                if model.bottles.isEmpty {
-                    Text("Aucune bouteille. Clique sur + pour installer un lanceur.")
-                        .font(.system(size: 13)).foregroundStyle(.white.opacity(0.6))
-                }
-                ForEach(model.bottles) { BottleSection(bottle: $0, model: model) }
-                if let failure = model.failure {
-                    Text(failure).font(.system(size: 12)).foregroundStyle(pink)
-                }
-            }
-            .padding(32)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        NavigationSplitView {
+            Sidebar(model: model)
+        } detail: {
+            detail
+                .safeAreaInset(edge: .bottom) { if let failure = model.failure { failureBar(failure) } }
         }
-        .background(Color(red: 0.078, green: 0.067, blue: 0.106))   // #14111b
-        .frame(minWidth: 560, minHeight: 420)
-        .sheet(isPresented: $model.adding) { AddSheet(model: model) }
-        .sheet(item: $model.editing) { SettingsSheet(bottle: $0, model: model) }
-        .confirmationDialog("Mettre « \(model.removing?.name ?? "") » à la Corbeille ?",
+        .searchable(text: $model.query, placement: .sidebar, prompt: tr("Rechercher", "Search"))
+        .id(language)
+        .frame(minWidth: 900, minHeight: 620)
+        .sheet(isPresented: $model.creating) { NewBottleSheet(model: model) }
+        .confirmationDialog(tr("Mettre « \(model.removing?.name ?? "") » à la Corbeille ?",
+                               "Move “\(model.removing?.name ?? "")” to the Trash?"),
                             isPresented: Binding(get: { model.removing != nil }, set: { if !$0 { model.removing = nil } }),
                             presenting: model.removing) { bottle in
-            Button("Mettre à la Corbeille", role: .destructive) { model.remove(bottle) }
+            Button(tr("Mettre à la Corbeille", "Move to Trash"), role: .destructive) { model.remove(bottle) }
         } message: { _ in
-            Text("La bouteille et ce qui y est installé partent à la Corbeille. Tu peux l'en ressortir tant qu'elle n'est pas vidée.")
+            Text(tr("La bouteille et ce qui y est installé partent à la Corbeille. Tu peux l'en ressortir tant qu'elle n'est pas vidée.",
+                    "The bottle and everything installed in it go to the Trash. You can take it back until the Trash is emptied."))
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.refresh()
         }
+    }
+
+    @ViewBuilder private var detail: some View {
+        switch model.page {
+        case .bottle(let name)?:
+            if let bottle = model.bottle(named: name) { BottlePage(bottle: bottle, model: model) } else { LibraryPage(model: model) }
+        case .bug?: BugPage()
+        default: LibraryPage(model: model)
+        }
+    }
+
+    private func failureBar(_ text: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(pink)
+            Text(text).font(.callout).textSelection(.enabled)
+            Spacer()
+            Button { model.failure = nil } label: { Image(systemName: "xmark") }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(tr("Fermer", "Dismiss"))
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(.bar)
+    }
+}
+
+struct SettingsView: View {
+    @AppStorage(Language.key) private var language = Language.system.rawValue
+
+    var body: some View {
+        Form {
+            Picker(tr("Langue", "Language"), selection: $language) {
+                Text(tr("Celle du Mac", "Same as the Mac")).tag(Language.system.rawValue)
+                Text("Français").tag(Language.fr.rawValue)
+                Text("English").tag(Language.en.rawValue)
+            }
+        }
+        .padding(24)
+        .frame(width: 380)
+        .id(language)
     }
 }
 
@@ -225,9 +225,17 @@ struct CuveeApp: App {
 
     var body: some Scene {
         Window("Cuvee", id: "main") {
-            QuickLaunchView().preferredColorScheme(.dark)
+            RootView().preferredColorScheme(.dark)
         }
-        .defaultSize(width: 760, height: 560)
+        .defaultSize(width: 1200, height: 880)   // a bottle page (games, settings, recommendation) fits without scrolling
         .windowResizability(.contentMinSize)
+        .commands {
+            CommandGroup(replacing: .help) {
+                Button(tr("Signaler un bug…", "Report a bug…")) { BugReport.open() }
+            }
+        }
+        Settings {
+            SettingsView().preferredColorScheme(.dark)
+        }
     }
 }

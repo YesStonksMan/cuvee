@@ -7,8 +7,8 @@ adds a few small patches so the game launchers work, and gives you:
 
 - `cuvee`, a command-line bottle manager: install a launcher in its own bottle, create, remove or import bottles,
   pick each bottle's graphics engine (Vulkan, OpenGL or Metal with MetalFX upscaling), launch a game, run a program;
-- `Cuvee.app`, a window with one section per bottle: its launcher, its Steam games, a gear for its settings,
-  a trash can, and a "+" to add a launcher or an empty bottle.
+- `Cuvee.app`, in English or French: a sidebar to search, start or install each launcher, open a bottle or report
+  a bug, every installed game in one place, and per-bottle settings with a recommendation for your Apple Silicon chip.
 
 > Cuvee is an independent project. It is not affiliated with, endorsed by or supported by CodeWeavers.
 > CrossOver is a trademark of CodeWeavers, Inc.; Steam is a trademark of Valve Corporation; Wine is a trademark
@@ -27,7 +27,7 @@ Tested on an Apple Silicon Mac with macOS 27, through Rosetta 2.
 | Steam: login, store, library, Play button | DirectX 12 (no vkd3d build yet) |
 | Steam overlay FPS counter | DXVK (wined3d is used for D3D10/11) |
 | D3D10/11 games through wined3d + MoltenVK (Kenshi, Brawlhalla tested) | Games with kernel anti-cheat |
-| D3D10/11 on Metal through DXMT, MetalFX upscaling (test window only so far) | Ubisoft Connect: installs, window stays white |
+| D3D10/11 on Metal through DXMT (Kenshi in game, 2560×1440); MetalFX upscaling not measured yet | Ubisoft Connect: installs, window stays white |
 | Epic Games Launcher: install, update, sign-in screen | EA app: installer window shows, rest not verified yet |
 | Battle.net: install, sign-in screen | Steam overlay menu (Shift+Tab) not verified |
 | Dock icons named after the program ("Steam") | DLSS itself (NVIDIA hardware); DXMT maps a D3D11 game's DLSS option to MetalFX |
