@@ -238,8 +238,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alert.addButton(withTitle: tr("Annuler", "Cancel"))
             if alert.runModal() != .alertFirstButtonReturn { return .terminateCancel }
         }
-        LauncherModel.shared.stopAll(bottles) { DispatchQueue.main.async { NSApp.reply(toApplicationShouldTerminate: true) } }
+        LauncherModel.shared.stopAll(bottles) { DispatchQueue.main.async { self.quit() } }
+        // a program stuck on a dialog must not keep a windowless Cuvee alive: quit anyway, its bottle keeps running
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { self.quit() }
         return .terminateLater
+    }
+
+    private var replied = false
+    private func quit() {
+        guard !replied else { return }
+        replied = true
+        NSApp.reply(toApplicationShouldTerminate: true)
     }
 }
 

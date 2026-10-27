@@ -4,6 +4,7 @@
 # Uses a throwaway bottle folder, never a real one. Default CUVEE: ./cuvee next to this folder.
 set -euo pipefail
 CUVEE="${1:-$(dirname "$0")/../cuvee}"
+[ -x "$(dirname "$CUVEE")/dist/bin/wine" ] || { echo "skip: build Wine first (dist/bin/wine)"; exit 0; }
 export CUVEE_BOTTLES="$(mktemp -d)" CUVEE_NO_SETUP=1
 trap 'rm -rf "$CUVEE_BOTTLES"' EXIT
 mkdir -p "$CUVEE_BOTTLES/race/drive_c"

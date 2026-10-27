@@ -41,6 +41,6 @@ rm -rf "$DEST"
 cp -R "$APP" "$DEST"
 # builds before 27-10-2026 went to ~/Applications: to the Trash, or Spotlight shows two Cuvee
 OLD="$HOME/Applications/Cuvee.app"
-if [ -d "$OLD" ]; then mv "$OLD" "$HOME/.Trash/Cuvee $(date +%Y%m%d-%H%M%S).app"; fi
+if [ -d "$OLD" ]; then mv "$OLD" "$HOME/.Trash/Cuvee $(date +%Y%m%d-%H%M%S).app" || echo "move $OLD to the Trash by hand" >&2; fi
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$DEST"
 echo "→ $DEST"

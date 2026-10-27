@@ -48,6 +48,8 @@ final class LauncherModel: ObservableObject {
         Task { [weak self] in
             while let self {
                 let fresh = Set(bottles.map(\.name).filter(Library.isOpen))
+                // a bottle that was open and now is not was stopped (here or elsewhere): a later start is not ours
+                startedHere.subtract(open.subtracting(fresh))
                 if fresh != open { open = fresh }
                 try? await Task.sleep(for: .seconds(2))
             }
