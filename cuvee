@@ -65,7 +65,10 @@ apply_settings() { # environment for the bottle's settings and launcher, read at
     opengl) export WINE_D3D_CONFIG="renderer=gl" ;;
     dxmt)   [ -d "$HERE/dist/lib/dxmt" ] || die "DXMT is not installed in this build (see README)"
             export WINEDLLPATH_PREPEND="$HERE/dist/lib/dxmt"   # DXMT's d3d11/dxgi/d3d10core/nvngx before wined3d's
-            [ "$(setting metalfx off)" = on ] && export DXMT_METALFX_SPATIAL_SWAPCHAIN=1 ;;
+            [ "$(setting metalfx off)" = on ] && export DXMT_METALFX_SPATIAL_SWAPCHAIN=1
+            # here MoltenVK only serves D3D12 (vkd3d) and Vulkan programs: Metal argument buffers lift its
+            # 128-texture limit (3DMark Steel Nomad); not in vulkan bottles, they break wined3d's geometry shaders
+            export MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS="${MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS:-1}" ;;
   esac
   # Battle.net's CEF renderer crashes (int3) in a loop without simulated copy-on-write mappings
   [ "$(setting launcher)" = battlenet ] && export WINE_SIMULATE_WRITECOPY=1

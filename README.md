@@ -24,7 +24,8 @@ Tested on an Apple Silicon Mac with macOS 27, through Rosetta 2.
 
 | Works | Not yet |
 | --- | --- |
-| Steam: login, store, library, Play button | Heavy DirectX 12: 3DMark Time Spy hits MoltenVK limits (black screen) |
+| Steam: login, store, library, Play button | 3DMark Time Spy (DX12): black screen, MoltenVK limits |
+| DirectX 12 through vkd3d + MoltenVK: 3DMark Steel Nomad runs to the end (`graphics dxmt` bottle; ~12× slower than 3DMark's native Metal version) | |
 | Steam overlay FPS counter | DXVK (wined3d is used for D3D10/11) |
 | D3D10/11 games through wined3d + MoltenVK (Kenshi, Brawlhalla tested) | Games with kernel anti-cheat |
 | D3D10/11 on Metal through DXMT (Kenshi in game, 2560×1440); MetalFX upscaling not measured yet | Ubisoft Connect: installs, window stays white |
@@ -60,6 +61,11 @@ All of them are in `patches/` and are applied by `build-wine.sh` on top of the p
   value for it). Chromium locks its discardable memory with it, so every decoded image counted as purged and was
   decoded again for each tile: 3DMark's lists stuttered when scrolling (252 decodes in 12 s, 13 with the patch).
   On macOS `MEM_RESET` keeps the pages' contents, so the undo now succeeds there.
+- **`vkd3d-steel-nomad.patch`** (vkd3d, Wine's Direct3D 12): three gaps 3DMark Steel Nomad hits in a row.
+  `CreateSharedHandle` on a fence returned "not implemented" (DirectStorage); fences can now be shared within one
+  process (not across processes: MoltenVK has no external semaphores). Readback/upload buffers created in another
+  initial state were refused, Windows ignores a buffer's initial state. A non-array view (`Texture2D`) of an array
+  texture kept every layer instead of one, which Metal rejects.
 - **`dll-path-prepend.patch`** (ntdll): `WINEDLLPATH_PREPEND` is searched before Wine's own DLLs, so a bottle set to
   `graphics dxmt` loads DXMT's `d3d11`/`dxgi`/`d3d10core` instead of wined3d's. Wine's `d3d12` (vkd3d) does not
   work with DXMT's `dxgi`, so a program whose `.exe` imports `d3d12.dll` but not `d3d11.dll` (normal or delay-load
@@ -140,6 +146,10 @@ arguments go in `CUVEE_STEAM_ARGS`. The app logs to `~/Library/Logs/Cuvee.log`.
 Tips:
 
 - wined3d picks its Vulkan renderer for D3D10/11 when MoltenVK is present; `graphics opengl` forces OpenGL.
+- In a `graphics dxmt` bottle, `cuvee` turns on MoltenVK's Metal argument buffers
+  (`MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS=1`): there MoltenVK only serves Direct3D 12 and Vulkan programs, and without
+  them Metal allows 128 textures per shader (Steel Nomad needs more). Vulkan bottles keep them off: wined3d's
+  geometry shaders break with them. Set the variable to 0 yourself to turn them off.
 - FSR is a setting inside each game. MetalFX with `graphics dxmt` renders fewer pixels and scales the image up
   (factor 2 by default; `d3d11.metalSpatialUpscaleFactor` in a `dxmt.conf` changes it, see DXMT's documentation).
 - `tests/steam-fps-test.sh LABEL DIST BOTTLE` launches Steam and Brawlhalla (must be installed), captures the
