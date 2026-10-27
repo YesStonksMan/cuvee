@@ -25,7 +25,7 @@ Tested on an Apple Silicon Mac with macOS 27, through Rosetta 2.
 | Works | Not yet |
 | --- | --- |
 | Steam: login, store, library, Play button | 3DMark Time Spy (DX12): black screen, MoltenVK limits |
-| DirectX 12 through vkd3d + MoltenVK: 3DMark Steel Nomad runs to the end (`graphics dxmt` bottle; ~12× slower than 3DMark's native Metal version) | |
+| DirectX 12 through vkd3d + MoltenVK: 3DMark Steel Nomad, started from 3DMark, scores 265 (`graphics dxmt` bottle; 3DMark's native Metal version: ~2,990 on the same Mac) | |
 | Steam overlay FPS counter | DXVK (wined3d is used for D3D10/11) |
 | D3D10/11 games through wined3d + MoltenVK (Kenshi, Brawlhalla tested) | Games with kernel anti-cheat |
 | D3D10/11 on Metal through DXMT (Kenshi in game, 2560×1440); MetalFX upscaling not measured yet | Ubisoft Connect: installs, window stays white |
@@ -52,7 +52,12 @@ All of them are in `patches/` and are applied by `build-wine.sh` on top of the p
   software adapter at start-up and crashed on the empty result. It now gets the first hardware adapter, as DXVK does.
 - **`gpu-luid-from-vulkan.patch`** (win32u): Wine gave the GPU a random LUID, so a program that matches its DXGI
   adapter against the Vulkan device's LUID (vkd3d, 3DMark Time Spy: "No DXGI adapter with given luid found") found
-  nothing. The GPU now takes the LUID MoltenVK reports, which is also the one DXMT uses.
+  nothing. The GPU now takes the LUID MoltenVK reports, which is also the one DXMT uses, with its top bit cleared:
+  on some Macs that bit is set, and 3DMark reads the LUID as a signed number (it hung after Steel Nomad).
+  `EnumAdapterByLuid` still accepts DXMT's form.
+- **`wined3d-driver-version.patch`** (wined3d): the reported driver version followed the Windows version the
+  calling program sees, and a program without a Windows 10 manifest sees Windows 8: its GPU then looked like a
+  Windows 8 driver (9.x). It now follows the real version (31.x, as Windows 10 drivers).
 - **`cef-gs-stackbase.patch`** (ntdll): on macOS `%gs:0x8` is not the TEB's stack base. CodeWeavers already patch
   the Chromium code that reads it in a few known `libcef.dll` versions; this adds 3DMark's CEF 3.2623.1397. Without
   it Blink took every thread for the main thread, its garbage collector waited 100 ms after each task for a thread
@@ -70,7 +75,9 @@ All of them are in `patches/` and are applied by `build-wine.sh` on top of the p
   `graphics dxmt` loads DXMT's `d3d11`/`dxgi`/`d3d10core` instead of wined3d's. Wine's `d3d12` (vkd3d) does not
   work with DXMT's `dxgi`, so a program whose `.exe` imports `d3d12.dll` but not `d3d11.dll` (normal or delay-load
   imports) skips `WINEDLLPATH_PREPEND` and gets Wine's own `dxgi`; every other program keeps DXMT. A game that imports
-  both (many Unreal Engine games) stays on DXMT and falls back to Direct3D 11 if it can.
+  both (many Unreal Engine games) stays on DXMT and falls back to Direct3D 11 if it can. 3DMark's adapter probes
+  `adapter_info.exe` and `dxr_info.exe` also get Wine's `dxgi`, so the LUID they hand to the DX12 tests is the one
+  those tests find.
 
 `cuvee` also sets `WINE_SIMULATE_WRITECOPY=1` for Battle.net bottles (its CEF renderer crashes in a loop without it)
 and passes Windows paths to `msiexec` (Wine's msiexec crashes on a raw Unix path).

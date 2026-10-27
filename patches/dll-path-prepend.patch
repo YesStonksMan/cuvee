@@ -1,13 +1,12 @@
 --- a/dlls/ntdll/unix/loader.c
 +++ b/dlls/ntdll/unix/loader.c
-@@ -383,17 +383,31 @@
-     if (path_len > dll_path_maxlen)
+@@ -384,16 +384,30 @@
          dll_path_maxlen = path_len;
  }
-+
+ 
 +/* cuvee: the WINEDLLPATH_PREPEND entries of dll_paths, NULL-terminated (see skip_dll_path_prepend) */
 +static const char **prepend_paths;
- 
++
  static void set_dll_path(void)
  {
      char *p, *path = getenv( "WINEDLLPATH" );
@@ -32,17 +31,16 @@
      if (!build_dir) dll_paths[count++] = dll_dir;
  
      if (path)
-@@ -1776,7 +1790,95 @@
-     return status;
+@@ -1777,6 +1791,118 @@
  }
  
-+
+ 
 +/* cuvee: number of readable bytes from rva to the end of its section, 0 if rva is in no readable section */
 +static ULONG image_readable( const IMAGE_NT_HEADERS *nt, ULONG rva )
 +{
 +    const IMAGE_SECTION_HEADER *sec = IMAGE_FIRST_SECTION( nt );
 +    ULONG i, vsize;
- 
++
 +    for (i = 0; i < nt->FileHeader.NumberOfSections; i++, sec++)
 +    {
 +        vsize = sec->Misc.VirtualSize ? sec->Misc.VirtualSize : sec->SizeOfRawData;
@@ -105,15 +103,39 @@
 +    return FALSE;
 +}
 +
++/* cuvee: does the image's path contain str, a lowercase ASCII string, ignoring case */
++static BOOL image_path_has( const UNICODE_STRING *nt_name, const char *str )
++{
++    USHORT len = nt_name->Length / sizeof(WCHAR), n = strlen( str ), i, j;
++    WCHAR c;
++
++    for (i = 0; i + n <= len; i++)
++    {
++        for (j = 0; j < n; j++)
++        {
++            c = nt_name->Buffer[i + j];
++            if ((c >= 'A' && c <= 'Z' ? c + 32 : c) != str[j]) break;
++        }
++        if (j == n) return TRUE;
++    }
++    return FALSE;
++}
++
 +/* cuvee: DXMT (WINEDLLPATH_PREPEND) replaces dxgi.dll, and wine's d3d12 cannot work with DXMT's dxgi
 + * (D3D12CreateDevice fails with E_NOINTERFACE). A program that imports d3d12.dll but not d3d11.dll only
-+ * speaks Direct3D 12, so it gets wine's own dxgi and vkd3d; everything else keeps DXMT. */
++ * speaks Direct3D 12, so it gets wine's own dxgi and vkd3d; everything else keeps DXMT.
++ * 3DMark's adapter probes adapter_info.exe and dxr_info.exe (dxgi loaded at run time) also get wine's: they
++ * hand the adapter LUID to the D3D12 tests, which look it up through wine's dxgi, and DXMT's LUID has its top
++ * bit set ("Unknown adapter LUID given!", or 3DMark hangs on the result). dxinfo.exe keeps DXMT on purpose:
++ * its D3D11 feature level (11_0 here) bars every DX12 test once 3DMark can match its LUID. */
 +static void skip_dll_path_prepend( const char *base, const UNICODE_STRING *nt_name )
 +{
 +    unsigned int i, j, k;
 +
 +    if (!prepend_paths || !prepend_paths[0]) return;
-+    if (!image_imports( base, "d3d12.dll" ) || image_imports( base, "d3d11.dll" )) return;
++    if ((!image_imports( base, "d3d12.dll" ) || image_imports( base, "d3d11.dll" ))
++            && !image_path_has( nt_name, "\\adapter_info.exe" ) && !image_path_has( nt_name, "\\dxr_info.exe" ))
++        return;
 +
 +    for (i = j = 0; dll_paths[i]; i++)
 +    {
@@ -121,14 +143,14 @@
 +        if (!prepend_paths[k]) dll_paths[j++] = dll_paths[i];
 +    }
 +    dll_paths[j] = NULL;
-+    TRACE( "%s imports d3d12.dll but not d3d11.dll, ignoring WINEDLLPATH_PREPEND\n", debugstr_us(nt_name) );
++    TRACE( "%s: Direct3D 12 only, ignoring WINEDLLPATH_PREPEND\n", debugstr_us(nt_name) );
 +}
 +
 +
  /***********************************************************************
   *           load_main_exe
   */
-@@ -1788,6 +1890,7 @@
+@@ -1788,6 +1914,7 @@
      USHORT search_machine;
  
      status = open_main_image( nt_name, module, &main_image_info, loadorder, load_machine );
