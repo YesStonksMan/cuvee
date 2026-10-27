@@ -56,6 +56,10 @@ All of them are in `patches/` and are applied by `build-wine.sh` on top of the p
   the Chromium code that reads it in a few known `libcef.dll` versions; this adds 3DMark's CEF 3.2623.1397. Without
   it Blink took every thread for the main thread, its garbage collector waited 100 ms after each task for a thread
   it could not wake, and 3DMark's window ran at 0.4 frames per second (60 with the patch).
+- **`mem-reset-undo.patch`** (ntdll): `VirtualAlloc(MEM_RESET_UNDO)` was refused (and Wine's header has the wrong
+  value for it). Chromium locks its discardable memory with it, so every decoded image counted as purged and was
+  decoded again for each tile: 3DMark's lists stuttered when scrolling (252 decodes in 12 s, 13 with the patch).
+  On macOS `MEM_RESET` keeps the pages' contents, so the undo now succeeds there.
 - **`dll-path-prepend.patch`** (ntdll): `WINEDLLPATH_PREPEND` is searched before Wine's own DLLs, so a bottle set to
   `graphics dxmt` loads DXMT's `d3d11`/`dxgi`/`d3d10core` instead of wined3d's. Wine's `d3d12` (vkd3d) does not
   work with DXMT's `dxgi`, so a program whose `.exe` imports `d3d12.dll` but not `d3d11.dll` (normal or delay-load
