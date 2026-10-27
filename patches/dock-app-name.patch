@@ -1,0 +1,28 @@
+--- a/dlls/ntdll/unix/loader.c
++++ b/dlls/ntdll/unix/loader.c
+@@ -553,8 +553,13 @@
+     else
+         exe_name_len = strlen(exe_name);
+ 
+-    if (exe_name_len)
+-        ret = strdup(exe_name);
++    /* cuvee: drop the extension as intended (strdup kept ".exe") and capitalize, so the Dock says "Steam" */
++    if (exe_name_len && (ret = strndup(exe_name, exe_name_len)))
++    {
++        /* Steam's window belongs to its CEF helper, not to steam.exe */
++        if (!strcasecmp(ret, "steamwebhelper")) strcpy(ret, "steam");
++        ret[0] = toupper((unsigned char)ret[0]);
++    }
+     else
+         ret = NULL;
+ 
+@@ -2543,7 +2548,8 @@
+     /* default to 32-bit loader to support 32-bit prefixes */
+     if (machine == IMAGE_FILE_MACHINE_AMD64) machine = IMAGE_FILE_MACHINE_I386;
+ 
+-    loader_exec( new_argv, machine, argv[0] );
++    /* cuvee: name the Dock icon after the program being started (argv[1]), not after the loader */
++    loader_exec( new_argv, machine, argc > 1 ? argv[1] : argv[0] );
+     fatal_error( "could not exec the wine loader\n" );
+ }
+ 

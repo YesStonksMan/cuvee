@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 680" width="680" height="680">
+<defs>
+  <linearGradient id="tileBg" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="#ff6a9a"/><stop offset="0.5" stop-color="#e01f78"/><stop offset="1" stop-color="#7a1aa6"/></linearGradient>
+  <linearGradient id="tileSheen" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fff" stop-opacity="0.26"/>
+    <stop offset="0.45" stop-color="#fff" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="tileEdge" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fff" stop-opacity="0.55"/>
+    <stop offset="0.5" stop-color="#fff" stop-opacity="0.08"/>
+    <stop offset="1" stop-color="#fff" stop-opacity="0.22"/>
+  </linearGradient>
+  <clipPath id="tileClip"><path d="M 640.59 100.00 C 722.19 100.00 763.00 104.12 799.79 112.14 C 853.66 133.66 890.34 170.34 911.86 224.21 C 919.88 261.00 924.00 301.81 924.00 383.41 L 924.00 640.59 C 924.00 722.19 919.88 763.00 911.86 799.79 C 890.34 853.66 853.66 890.34 799.79 911.86 C 763.00 919.88 722.19 924.00 640.59 924.00 L 383.41 924.00 C 301.81 924.00 261.00 919.88 224.21 911.86 C 170.34 890.34 133.66 853.66 112.14 799.79 C 104.12 763.00 100.00 722.19 100.00 640.59 L 100.00 383.41 C 100.00 301.81 104.12 261.00 112.14 224.21 C 133.66 170.34 170.34 133.66 224.21 112.14 C 261.00 104.12 301.81 100.00 383.41 100.00 Z"/></clipPath>
+  <filter id="tileShadow" x="-10%" y="-10%" width="120%" height="125%">
+    <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity="0.32"/>
+  </filter>
+  <filter id="blur18" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="18"/></filter>
+  <filter id="blur8" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="8"/></filter>
+  <filter id="blur3" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3"/></filter>
+  
+  <linearGradient id="bTop" x1="0" y1="-300" x2="0" y2="300" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ece6f6"/></linearGradient>
+  <linearGradient id="bSide" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#d9cfe8"/><stop offset="1" stop-color="#9b8cb8"/></linearGradient>
+  <linearGradient id="bArrow" x1="0" y1="-34" x2="0" y2="22" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#b3125e"/><stop offset="1" stop-color="#e2407f"/></linearGradient>
+  <radialGradient id="bDimple" cx="0.5" cy="0.3" r="0.7">
+    <stop offset="0" stop-color="#d6cce6"/><stop offset="0.8" stop-color="#f7f3fc"/><stop offset="1" stop-color="#ffffff"/></radialGradient>
+  <linearGradient id="bRim" x1="0" y1="-300" x2="0" y2="0" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+</defs>
+<g transform="translate(340 340)">
+  <path d="M -66 -300 L 66 -300 A 42 42 0 0 1 108 -258 L 108 -138 A 30 30 0 0 0 138 -108 L 258 -108 A 42 42 0 0 1 300 -66 L 300 66 A 42 42 0 0 1 258 108 L 138 108 A 30 30 0 0 0 108 138 L 108 258 A 42 42 0 0 1 66 300 L -66 300 A 42 42 0 0 1 -108 258 L -108 138 A 30 30 0 0 0 -138 108 L -258 108 A 42 42 0 0 1 -300 66 L -300 -66 A 42 42 0 0 1 -258 -108 L -138 -108 A 30 30 0 0 0 -108 -138 L -108 -258 A 42 42 0 0 1 -66 -300 Z" fill="url(#bSide)" transform="translate(0 26)"/>
+  <path d="M -66 -300 L 66 -300 A 42 42 0 0 1 108 -258 L 108 -138 A 30 30 0 0 0 138 -108 L 258 -108 A 42 42 0 0 1 300 -66 L 300 66 A 42 42 0 0 1 258 108 L 138 108 A 30 30 0 0 0 108 138 L 108 258 A 42 42 0 0 1 66 300 L -66 300 A 42 42 0 0 1 -108 258 L -108 138 A 30 30 0 0 0 -138 108 L -258 108 A 42 42 0 0 1 -300 66 L -300 -66 A 42 42 0 0 1 -258 -108 L -138 -108 A 30 30 0 0 0 -108 -138 L -108 -258 A 42 42 0 0 1 -66 -300 Z" fill="url(#bTop)"/>
+  <path d="M -66 -300 L 66 -300 A 42 42 0 0 1 108 -258 L 108 -138 A 30 30 0 0 0 138 -108 L 258 -108 A 42 42 0 0 1 300 -66 L 300 66 A 42 42 0 0 1 258 108 L 138 108 A 30 30 0 0 0 108 138 L 108 258 A 42 42 0 0 1 66 300 L -66 300 A 42 42 0 0 1 -108 258 L -108 138 A 30 30 0 0 0 -138 108 L -258 108 A 42 42 0 0 1 -300 66 L -300 -66 A 42 42 0 0 1 -258 -108 L -138 -108 A 30 30 0 0 0 -108 -138 L -108 -258 A 42 42 0 0 1 -66 -300 Z" fill="none" stroke="url(#bRim)" stroke-width="4"/>
+  <circle cx="0" cy="0" r="66" fill="url(#bDimple)"/>
+  <circle cx="0" cy="0" r="66" fill="none" stroke="#c8bcdc" stroke-width="2"/>
+  <g transform="rotate(0) translate(0 -212)"><path d="M 0 -34 L 34 22 L -34 22 Z" fill="#fff" opacity="0.9" transform="translate(0 3)"/><path d="M 0 -34 L 34 22 L -34 22 Z" fill="url(#bArrow)"/></g><g transform="rotate(90) translate(0 -212)"><path d="M 0 -34 L 34 22 L -34 22 Z" fill="#fff" opacity="0.9" transform="translate(0 3)"/><path d="M 0 -34 L 34 22 L -34 22 Z" fill="url(#bArrow)"/></g><g transform="rotate(180) translate(0 -212)"><path d="M 0 -34 L 34 22 L -34 22 Z" fill="#fff" opacity="0.9" transform="translate(0 3)"/><path d="M 0 -34 L 34 22 L -34 22 Z" fill="url(#bArrow)"/></g><g transform="rotate(270) translate(0 -212)"><path d="M 0 -34 L 34 22 L -34 22 Z" fill="#fff" opacity="0.9" transform="translate(0 3)"/><path d="M 0 -34 L 34 22 L -34 22 Z" fill="url(#bArrow)"/></g>
+</g>
+</svg>

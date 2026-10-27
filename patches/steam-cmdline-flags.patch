@@ -1,0 +1,39 @@
+--- a/dlls/kernelbase/process.c
++++ b/dlls/kernelbase/process.c
+@@ -564,6 +564,36 @@
+             FIXME("HACK: not starting powershell.exe.\n");
+             SetLastError( ERROR_FILE_NOT_FOUND );
+             return FALSE;
++        }
++    }
++
++    /* cuvee: extra command-line flags some Steam programs need under Wine */
++    {
++        static const struct { const WCHAR *exe, *flags; } extra[] =
++        {
++            /* CEF renders black unless every helper gets these (same flags as Proton's steamwebhelper hack) */
++            { L"steamwebhelper.exe", L" --no-sandbox --in-process-gpu --disable-gpu" },
++            /* the overlay's VGUI text (FPS counter) comes out blank through DirectWrite: use GDI text */
++            { L"gameoverlayui64.exe", L" -no-dwrite" },
++            { L"gameoverlayui.exe", L" -no-dwrite" },
++        };
++        const WCHAR *base = app_name, *s;
++        WCHAR *new_cmdline;
++        unsigned int i;
++        size_t len;
++
++        for (s = app_name; *s; s++) if (*s == '\\' || *s == '/') base = s + 1;
++        for (i = 0; i < ARRAY_SIZE(extra); i++)
++        {
++            if (wcsicmp( base, extra[i].exe )) continue;
++            len = lstrlenW( tidy_cmdline ) + lstrlenW( extra[i].flags ) + 1;
++            if (!(new_cmdline = HeapAlloc( GetProcessHeap(), 0, len * sizeof(WCHAR) ))) break;
++            lstrcpyW( new_cmdline, tidy_cmdline );
++            lstrcatW( new_cmdline, extra[i].flags );
++            if (tidy_cmdline != cmd_line) HeapFree( GetProcessHeap(), 0, tidy_cmdline );
++            tidy_cmdline = new_cmdline;
++            TRACE( "%s cmdline %s\n", debugstr_w(base), debugstr_w(tidy_cmdline) );
++            break;
+         }
+     }
+ 

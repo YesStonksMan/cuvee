@@ -1,0 +1,15 @@
+# sources, build and install trees (fetch-sources.sh / build-*.sh recreate them)
+/src/
+/deps/
+/build/
+/dist/
+*.log
+*.exe
+/tests/out/
+# personal notes and drafts, not part of the project
+/CLAUDE.md
+/docs/
+/graphify-out/
+/branding/pistes-*.png
+/Portfile.crossover
+.DS_Store

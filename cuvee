@@ -1,0 +1,100 @@
+#!/bin/bash
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# cuvee — minimal Wine bottle manager on top of our own build of CrossOver 26.3's Wine.
+#   cuvee install                  install a runnable copy in ~/Library/Application Support/Cuvee/runtime
+#   cuvee list                     list bottles
+#   cuvee create NAME              create a Windows 10 bottle
+#   cuvee import NAME              clone a CrossOver bottle (no extra disk)
+#   cuvee steam [NAME]             install (first time) and launch Steam in bottle NAME (default: Steam)
+#   cuvee game NAME APPID          launch Steam game APPID in bottle NAME (same path as Steam's Play button)
+#   cuvee run NAME PROGRAM [ARGS]  run a Windows program in bottle NAME
+#   cuvee cfg NAME                 open winecfg for bottle NAME
+#   cuvee kill NAME                stop everything running in bottle NAME
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+WINE="$HERE/dist/bin/wine"
+BOTTLES="${CUVEE_BOTTLES:-$HOME/Library/Application Support/Cuvee/Bottles}"
+STEAM_URL="https://cdn.cloudflare.steamstatic.com/client/installer/SteamSetup.exe"
+
+export WINEDEBUG="${WINEDEBUG:--all}"
+export WINEMSYNC="${WINEMSYNC:-1}"   # CrossOver's mach-semaphore sync
+export DYLD_FALLBACK_LIBRARY_PATH="$HERE/dist/lib:/usr/lib"
+export WINEDLLPATH="${WINEDLLPATH:-$HERE/dist/lib/wine}"   # lets wine name each Dock icon after its program (CW HACK 22144)
+
+die() { echo "cuvee: $*" >&2; exit 1; }
+[ -x "$WINE" ] || die "wine not built yet ($WINE)"
+
+bottle() { # NAME -> sets WINEPREFIX
+  [ -n "${1:-}" ] || die "bottle name required"
+  export WINEPREFIX="$BOTTLES/$1"
+}
+
+refresh() { # wine was rebuilt since the bottle's last update: update it now, without the Mono/Gecko prompts wine would show
+  [ -f "$WINEPREFIX/.update-timestamp" ] && [ "$HERE/dist/share/wine/wine.inf" -nt "$WINEPREFIX/.update-timestamp" ] || return 0
+  echo "updating bottle for the new wine build..."
+  # any program will do: the session's own wineboot --init does the update (wineboot -u would also start Run entries like Steam)
+  WINEDLLOVERRIDES="mscoree,mshtml=" "$WINE" cmd /c exit
+  "$HERE/dist/bin/wineserver" -w
+}
+
+create() {
+  bottle "$1"
+  [ -d "$WINEPREFIX/drive_c" ] && { echo "bottle '$1' exists"; return; }
+  mkdir -p "$WINEPREFIX"
+  echo "creating bottle '$1'..."
+  WINEDLLOVERRIDES="mscoree,mshtml=" "$WINE" wineboot --init   # skip Mono/Gecko install prompts
+  "$HERE/dist/bin/wineserver" -w
+  "$WINE" winecfg -v win10 >/dev/null 2>&1 || true
+  echo "bottle '$1' ready: $WINEPREFIX"
+}
+
+steam() {
+  local name="${1:-Steam}"
+  create "$name"; refresh
+  local exe="$WINEPREFIX/drive_c/Program Files (x86)/Steam/steam.exe"
+  if [ ! -f "$exe" ]; then
+    local setup="$WINEPREFIX/drive_c/SteamSetup.exe"
+    echo "downloading Steam installer from Valve..."
+    curl -fL --retry 3 -o "$setup" "$STEAM_URL"
+    "$WINE" "$setup" /S
+    "$HERE/dist/bin/wineserver" -w
+    rm -f "$setup"
+    [ -f "$exe" ] || die "Steam install failed"
+  fi
+  cd "$(dirname "$exe")"
+  exec "$WINE" steam.exe ${CUVEE_STEAM_ARGS:-}
+}
+
+import() { # clone a CrossOver bottle (APFS clonefile: instant, no extra disk until files change)
+  local src="$HOME/Library/Application Support/CrossOver/Bottles/$1"
+  [ -d "$src/drive_c" ] || die "no CrossOver bottle '$1'"
+  bottle "$1"
+  [ -e "$WINEPREFIX" ] && die "bottle '$1' already exists"
+  mkdir -p "$BOTTLES"
+  cp -cR "$src" "$WINEPREFIX"
+  echo "imported '$1' -> $WINEPREFIX"
+}
+
+install() { # copy cuvee + dist outside ~/Desktop (TCC blocks Finder-launched apps there); APFS clone, no extra disk
+  local dst="$HOME/Library/Application Support/Cuvee/runtime"
+  pgrep -f "[C]uvee/runtime/dist/" >/dev/null && die "quit Steam and games first (they run from $dst)"
+  rm -rf "$dst.new"; mkdir -p "$dst.new"
+  cp -cR "$HERE/dist" "$dst.new/dist"; cp "$HERE/cuvee" "$dst.new/cuvee"
+  rm -rf "$dst"; mv "$dst.new" "$dst"
+  echo "installed -> $dst"
+}
+
+case "${1:-}" in
+  install) install ;;
+  list)   ls -1 "$BOTTLES" 2>/dev/null || true ;;
+  import) import "${2:-}" ;;
+  create) create "${2:-}" ;;
+  steam)  steam "${2:-}" ;;
+  game)   bottle "${2:-}"; [[ "${3:-}" =~ ^[0-9]+$ ]] || die "steam appid required"; refresh
+          cd "$WINEPREFIX/drive_c/Program Files (x86)/Steam"; exec "$WINE" steam.exe ${CUVEE_STEAM_ARGS:-} "steam://rungameid/$3" ;;
+  run)    bottle "${2:-}"; shift 2; [ $# -gt 0 ] || die "program required"; refresh; exec "$WINE" "$@" ;;
+  cfg)    bottle "${2:-}"; refresh; exec "$WINE" winecfg ;;
+  kill)   bottle "${2:-}"; exec "$HERE/dist/bin/wineserver" -k ;;
+  *)      sed -n '3,12p' "$0"; exit 1 ;;
+esac

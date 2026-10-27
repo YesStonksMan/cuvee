@@ -1,0 +1,9 @@
+--- a/dlls/win32u/vulkan.c
++++ b/dlls/win32u/vulkan.c
+@@ -1,3 +1,6 @@
++#ifndef SONAME_LIBVULKAN /* cuvee: built --without-vulkan, but CW HACK 25909 below uses it: default to MoltenVK */
++#define SONAME_LIBVULKAN "libMoltenVK.dylib"
++#endif
+ /*
+  * Vulkan display driver loading
+  *
