@@ -139,23 +139,55 @@ enum Library {
 
     /// Does a wineserver serve this bottle? Same test as `running()` in the cuvee script (a stat, cheap to poll).
     static func isOpen(_ bottle: String) -> Bool {
-        var info = stat()
-        guard stat(bottlesDir.appending(path: bottle).path, &info) == 0 else { return false }
-        let dev = String(UInt32(bitPattern: info.st_dev), radix: 16), ino = String(info.st_ino, radix: 16)
-        return FileManager.default.fileExists(atPath: "/private/tmp/.wine-\(getuid())/server-\(dev)-\(ino)/socket")
+        guard let dir = serverDir(bottle) else { return false }
+        return FileManager.default.fileExists(atPath: "/private/tmp/.wine-\(getuid())/\(dir)/socket")
     }
 
-    /// Is a process with `marker` in its command line running? Wine shows a program's Windows path there.
-    static func isRunning(_ marker: String) -> Bool {
-        let ps = Process()
-        let out = Pipe()
-        ps.executableURL = URL(filePath: "/bin/ps")
-        ps.arguments = ["-axo", "comm="]
-        ps.standardOutput = out
-        guard (try? ps.run()) != nil else { return false }
-        let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        ps.waitUntilExit()
-        return text.localizedCaseInsensitiveContains(marker)
+    /// "server-DEV-INODE": the folder of the wineserver that serves this bottle.
+    private static func serverDir(_ bottle: String) -> String? {
+        var info = stat()
+        guard stat(bottlesDir.appending(path: bottle).path, &info) == 0 else { return nil }
+        return "server-\(String(UInt32(bitPattern: info.st_dev), radix: 16))-\(String(info.st_ino, radix: 16))"
+    }
+
+    /// Windows programs running in `bottle` that pass `keep`, as Wine names them (a full Windows path, or a bare
+    /// "steam.exe" when started by name). The name says nothing of the bottle: every Wine process maps a file of
+    /// its own wineserver's folder, so `lsof` tells which bottle each candidate belongs to.
+    static func programs(in bottle: String, where keep: (String) -> Bool) -> [String] {
+        guard let dir = serverDir(bottle) else { return [] }
+        let candidates = output("/bin/ps", ["-axo", "pid=,comm="]).split(separator: "\n").compactMap { line -> (String, String)? in
+            let parts = line.trimmingCharacters(in: .whitespaces).split(separator: " ", maxSplits: 1)
+            guard parts.count == 2, keep(String(parts[1])) else { return nil }
+            return (String(parts[0]), String(parts[1]))
+        }
+        return candidates.filter { output("/usr/sbin/lsof", ["-a", "-p", $0.0, "-d", "txt", "-Fn"]).contains("/\(dir)/") }
+            .map(\.1)
+    }
+
+    /// A game, not Windows itself nor a launcher's own programs (an unknown helper counts as a game: one more question).
+    static func isGame(_ program: String) -> Bool {
+        let path = program.lowercased()
+        guard path.dropFirst().hasPrefix(":\\"), !path.contains("\\windows\\") else { return false }   // bare names: launchers
+        if gameDirs.contains(where: path.contains) { return true }
+        return !launcherDirs.contains(where: path.contains)
+    }
+
+    // must match where the launchers of `launcher()` in the cuvee script install themselves
+    private static let launcherDirs = ["\\steam\\", "\\common files\\", "\\epic games\\launcher\\", "\\epic online services\\",
+                                       "\\electronic arts\\ea desktop\\", "\\battle.net\\", "\\ubisoft game launcher\\"]
+    private static let gameDirs = ["\\steamapps\\common\\", "\\ubisoft game launcher\\games\\"]
+
+    private static func output(_ tool: String, _ args: [String]) -> String {
+        let process = Process()
+        let pipe = Pipe()
+        process.executableURL = URL(filePath: tool)
+        process.arguments = args
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return "" }
+        let text = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        process.waitUntilExit()
+        return text
     }
 
     // Steam caches artwork per appid, sometimes inside hashed sub-folders: prefer the portrait capsule.

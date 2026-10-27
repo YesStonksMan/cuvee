@@ -31,7 +31,7 @@ final class LauncherModel: ObservableObject {
     /// The bottles this app started that still run, and whether one of their games is open.
     func runningStarted() -> (bottles: [Bottle], gameOpen: Bool) {
         let list = bottles.filter { startedHere.contains($0.name) && Library.isOpen($0.name) }
-        return (list, list.flatMap(\.games).compactMap(\.process).contains(where: Library.isRunning))
+        return (list, list.contains { !Library.programs(in: $0.name, where: Library.isGame).isEmpty })
     }
 
     /// `cuvee stop` on each bottle, then `done` once all have exited (failed or not).
@@ -58,17 +58,19 @@ final class LauncherModel: ObservableObject {
 
     func stop(_ bottle: Bottle, confirmed: Bool = false) {
         guard !stopping.contains(bottle.name) else { return }
-        let markers = bottle.games.compactMap(\.process)
+        stopping.insert(bottle.name)   // before any await: a second click finds it already stopping
+        let name = bottle.name
         Task {
-            if !confirmed, await Task.detached(operation: { markers.contains(where: Library.isRunning) }).value {
+            if !confirmed, await Task.detached(operation: { !Library.programs(in: name, where: Library.isGame).isEmpty }).value {
+                stopping.remove(name)
                 confirmingStop = bottle
                 return
             }
-            let what = tr("Arrêt de « \(bottle.name) »", "Stopping “\(bottle.name)”")
-            if run(["stop", bottle.name], what: what, then: { _ in
-                self.stopping.remove(bottle.name)
+            let what = tr("Arrêt de « \(name) »", "Stopping “\(name)”")
+            if !run(["stop", name], what: what, then: { _ in
+                self.stopping.remove(name)
                 self.open = self.open.filter(Library.isOpen)
-            }) { stopping.insert(bottle.name) }
+            }) { stopping.remove(name) }
         }
     }
 
@@ -103,7 +105,9 @@ final class LauncherModel: ObservableObject {
             let deadline = Date().addingTimeInterval(tile.process == nil ? 6 : 120)
             while Date() < deadline {
                 try? await Task.sleep(for: .seconds(1))
-                if let marker = tile.process, await Task.detached(operation: { Library.isRunning(marker) }).value { break }
+                if let marker = tile.process, await Task.detached(operation: {
+                    !Library.programs(in: tile.action.bottle, where: { $0.localizedCaseInsensitiveContains(marker) }).isEmpty
+                }).value { break }
             }
             launching.remove(tile.id)
         }
