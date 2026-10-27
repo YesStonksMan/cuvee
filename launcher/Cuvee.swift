@@ -147,7 +147,7 @@ struct Sidebar: View {
 }
 
 struct RootView: View {
-    @StateObject private var model = LauncherModel()
+    @ObservedObject private var model = LauncherModel.shared
     @AppStorage(Language.key) private var language = Language.system.rawValue   // re-renders every text on change
 
     var body: some View {
@@ -225,6 +225,22 @@ struct SettingsView: View {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    /// Quitting Cuvee closes what it started, the way its Stop button does.
+    @MainActor func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let (bottles, gameOpen) = LauncherModel.shared.runningStarted()
+        if bottles.isEmpty { return .terminateNow }
+        if gameOpen {
+            let alert = NSAlert()
+            alert.messageText = tr("Quitter Cuvee ferme aussi tes jeux", "Quitting Cuvee closes your games too")
+            alert.informativeText = tr("Un jeu est ouvert. Sauvegarde ta partie avant.", "A game is open. Save your game first.")
+            alert.addButton(withTitle: tr("Tout fermer", "Close everything"))
+            alert.addButton(withTitle: tr("Annuler", "Cancel"))
+            if alert.runModal() != .alertFirstButtonReturn { return .terminateCancel }
+        }
+        LauncherModel.shared.stopAll(bottles) { DispatchQueue.main.async { NSApp.reply(toApplicationShouldTerminate: true) } }
+        return .terminateLater
+    }
 }
 
 @main

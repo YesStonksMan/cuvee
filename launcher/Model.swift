@@ -24,8 +24,27 @@ final class LauncherModel: ObservableObject {
     @Published var open: Set<String> = []       // bottles whose programs run, polled: Steam can be quit from its own menu
     @Published var stopping: Set<String> = []
     @Published var confirmingStop: Bottle?     // a game of it runs: closing the bottle closes the game
+    private var startedHere: Set<String> = []  // quitting Cuvee stops these; bottles started elsewhere are left alone
 
-    init() {
+    static let shared = LauncherModel()          // the app delegate stops the bottles at quit
+
+    /// The bottles this app started that still run, and whether one of their games is open.
+    func runningStarted() -> (bottles: [Bottle], gameOpen: Bool) {
+        let list = bottles.filter { startedHere.contains($0.name) && Library.isOpen($0.name) }
+        return (list, list.flatMap(\.games).compactMap(\.process).contains(where: Library.isRunning))
+    }
+
+    /// `cuvee stop` on each bottle, then `done` once all have exited (failed or not).
+    func stopAll(_ list: [Bottle], then done: @escaping @Sendable () -> Void) {
+        let group = DispatchGroup()
+        for bottle in list {
+            group.enter()
+            do { try CLI.run(["stop", bottle.name]) { _ in group.leave() } } catch { group.leave() }
+        }
+        group.notify(queue: .main, execute: done)
+    }
+
+    private init() {
         Task { [weak self] in
             while let self {
                 let fresh = Set(bottles.map(\.name).filter(Library.isOpen))
@@ -74,6 +93,7 @@ final class LauncherModel: ObservableObject {
         guard !launching.contains(tile.id) else { return }
         guard run(CLI.args(for: tile.action), what: tr("Lancement de \(tile.name)", "Launching \(tile.name)"), isLaunch: true)
         else { return }
+        startedHere.insert(tile.action.bottle)
         launching.insert(tile.id)
         Task {
             // a launcher shows its window within seconds; a game waits for Steam (~30 s when Steam starts cold),

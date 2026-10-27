@@ -38,6 +38,12 @@ enum Graphics: String, CaseIterable, Identifiable {
 enum TileAction: Equatable {
     case open(bottle: String)
     case game(bottle: String, appid: String)
+
+    var bottle: String {
+        switch self {
+        case .open(let bottle), .game(let bottle, _): bottle
+        }
+    }
 }
 
 struct Tile: Identifiable, Equatable {
