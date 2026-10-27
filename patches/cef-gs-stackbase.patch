@@ -1,0 +1,83 @@
+--- a/dlls/ntdll/loader.c
++++ b/dlls/ntdll/loader.c
+@@ -3030,6 +3030,55 @@
+     C_ASSERT( sizeof(before_85_3_11_1) == sizeof(after_85_3_11_1) );
+ 
+ 
++    /* Cuvee: libcef.dll 3.2623.1397 (Chromium 49), used by 3DMark. On macOS %gs:0x8 is not the TEB's
++     * StackBase, so Blink's main-thread check (stack start minus stack size) took every thread for the
++     * main thread: other threads' GC interruptors landed on the main thread, every Oilpan GC waited
++     * 100 ms for a thread it could not wake, and the UI ran below 1 frame per second.
++     * Both reads now go through the TEB pointer at %gs:0x30. */
++    static const char before_cef_3_2623_0[] =
++    {
++        0x65, 0x48, 0x8b, 0x0c, 0x25, 0x08, 0x00, 0x00, 0x00, /* mov rcx, qword [gs:0x8] */
++        0x48, 0x3d, 0x00, 0x04, 0x00, 0x00,                   /* cmp rax, 0x400 */
++        0x77, 0x08,                                           /* ja +8 */
++        0xc6, 0x04, 0x25, 0x00, 0x00, 0x00, 0x00, 0x00,       /* mov byte [0], 0 (assert) */
++        0x48, 0x05, 0x00, 0xfc, 0xff, 0xff,                   /* add rax, -0x400 */
++        0x48, 0x3b, 0xc8,                                     /* cmp rcx, rax */
++        0x77, 0x08,                                           /* ja +8 */
++        0xc6, 0x04, 0x25, 0x00, 0x00, 0x00, 0x00, 0x00,       /* mov byte [0], 0 (assert) */
++        0x48, 0x2b, 0xc8                                      /* sub rcx, rax */
++    };
++    static const char after_cef_3_2623_0[] =
++    {
++        0x6a, 0x30,                                           /* push 0x30 */
++        0x59,                                                 /* pop rcx */
++        0x65, 0x48, 0x8b, 0x09,                               /* mov rcx, qword [gs:rcx] */
++        0x48, 0x8b, 0x49, 0x08,                               /* mov rcx, qword [rcx+8] */
++        0x48, 0x2d, 0x00, 0x04, 0x00, 0x00,                   /* sub rax, 0x400 */
++        0x48, 0x2b, 0xc8,                                     /* sub rcx, rax */
++        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, /* nop */
++        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
++        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90
++    };
++    C_ASSERT( sizeof(before_cef_3_2623_0) == sizeof(after_cef_3_2623_0) );
++
++    static const char before_cef_3_2623_1[] =
++    {
++        0x65, 0x48, 0x8b, 0x04, 0x25, 0x08, 0x00, 0x00, 0x00, /* mov rax, qword [gs:0x8] */
++        0xc3,                                                 /* ret */
++        0xcc,                                                 /* int3 */
++        0xcc                                                  /* int3 */
++    };
++    static const char after_cef_3_2623_1[] =
++    {
++        0x6a, 0x30,                                           /* push 0x30 */
++        0x58,                                                 /* pop rax */
++        0x65, 0x48, 0x8b, 0x00,                               /* mov rax, qword [gs:rax] */
++        0x48, 0x8b, 0x40, 0x08,                               /* mov rax, qword [rax+8] */
++        0xc3                                                  /* ret */
++    };
++    C_ASSERT( sizeof(before_cef_3_2623_1) == sizeof(after_cef_3_2623_1) );
++
++
+     static const char before_72_0_3626_121_1[] =
+     {
+         0x65, 0x48, 0x8b, 0x04, 0x25, 0x08, 0x00, 0x00, 0x00, /* mov rax, qword [gs:0x8] */
+@@ -3199,6 +3248,24 @@
+     } static const patches[] =
+     {
+ #ifdef __x86_64__
++        /* Cuvee: libcef.dll 3.2623.1397 (3DMark). */
++        {
++            L"libcef.dll",
++            "CEF %gs 3.2623.1397-0",
++            before_cef_3_2623_0, after_cef_3_2623_0,
++            sizeof(before_cef_3_2623_0),
++            0x14dc95d,
++            FALSE
++        },
++        {
++            L"libcef.dll",
++            "CEF %gs 3.2623.1397-1",
++            before_cef_3_2623_1, after_cef_3_2623_1,
++            sizeof(before_cef_3_2623_1),
++            0x14dc9c0,
++            TRUE
++        },
++
+         /* CW HACK 22584L
+          * libcef.dll 85.3.11, for an updated Rockstar Games Social Club/Launcher.
+          */

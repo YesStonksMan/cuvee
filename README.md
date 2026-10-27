@@ -24,7 +24,7 @@ Tested on an Apple Silicon Mac with macOS 27, through Rosetta 2.
 
 | Works | Not yet |
 | --- | --- |
-| Steam: login, store, library, Play button | DirectX 12 (no vkd3d build yet) |
+| Steam: login, store, library, Play button | Heavy DirectX 12: 3DMark Time Spy hits MoltenVK limits (black screen) |
 | Steam overlay FPS counter | DXVK (wined3d is used for D3D10/11) |
 | D3D10/11 games through wined3d + MoltenVK (Kenshi, Brawlhalla tested) | Games with kernel anti-cheat |
 | D3D10/11 on Metal through DXMT (Kenshi in game, 2560×1440); MetalFX upscaling not measured yet | Ubisoft Connect: installs, window stays white |
@@ -52,6 +52,10 @@ All of them are in `patches/` and are applied by `build-wine.sh` on top of the p
 - **`gpu-luid-from-vulkan.patch`** (win32u): Wine gave the GPU a random LUID, so a program that matches its DXGI
   adapter against the Vulkan device's LUID (vkd3d, 3DMark Time Spy: "No DXGI adapter with given luid found") found
   nothing. The GPU now takes the LUID MoltenVK reports, which is also the one DXMT uses.
+- **`cef-gs-stackbase.patch`** (ntdll): on macOS `%gs:0x8` is not the TEB's stack base. CodeWeavers already patch
+  the Chromium code that reads it in a few known `libcef.dll` versions; this adds 3DMark's CEF 3.2623.1397. Without
+  it Blink took every thread for the main thread, its garbage collector waited 100 ms after each task for a thread
+  it could not wake, and 3DMark's window ran at 0.4 frames per second (60 with the patch).
 - **`dll-path-prepend.patch`** (ntdll): `WINEDLLPATH_PREPEND` is searched before Wine's own DLLs, so a bottle set to
   `graphics dxmt` loads DXMT's `d3d11`/`dxgi`/`d3d10core` instead of wined3d's. Wine's `d3d12` (vkd3d) does not
   work with DXMT's `dxgi`, so a program whose `.exe` imports `d3d12.dll` but not `d3d11.dll` (normal or delay-load
