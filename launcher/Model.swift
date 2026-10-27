@@ -47,7 +47,13 @@ final class LauncherModel: ObservableObject {
         else { return }
         launching.insert(tile.id)
         Task {
-            try? await Task.sleep(for: .seconds(6))   // a launcher takes a few seconds to show its window
+            // a launcher shows its window within seconds; a game waits for Steam (~30 s when Steam starts cold),
+            // so its badge stays until the game's own process runs, at most 2 minutes
+            let deadline = Date().addingTimeInterval(tile.process == nil ? 6 : 120)
+            while Date() < deadline {
+                try? await Task.sleep(for: .seconds(1))
+                if let marker = tile.process, await Task.detached(operation: { Library.isRunning(marker) }).value { break }
+            }
             launching.remove(tile.id)
         }
     }

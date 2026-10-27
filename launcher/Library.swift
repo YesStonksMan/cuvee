@@ -46,13 +46,15 @@ struct Tile: Identifiable, Equatable {
     let art: URL?
     let action: TileAction
     let image: NSImage?     // decoded once here: views re-render on every hover change
+    let process: String?    // in the command line of the game once it runs: `steamapps\common\<installdir>\`
 
-    init(id: String, name: String, art: URL?, action: TileAction) {
+    init(id: String, name: String, art: URL?, action: TileAction, process: String? = nil) {
         self.id = id
         self.name = name
         self.art = art
         self.action = action
         self.image = art.flatMap(NSImage.init(contentsOf:))
+        self.process = process
     }
 
     static func == (a: Tile, b: Tile) -> Bool { a.id == b.id && a.name == b.name && a.art == b.art }
@@ -124,8 +126,22 @@ enum Library {
               let id = text.firstMatch(of: #/(?i)"appid"\s+"(\d+)"/#)?.1,
               let name = text.firstMatch(of: #/"name"\s+"([^"]+)"/#)?.1,
               !hiddenApps.contains(String(id)) else { return nil }
+        let dir = text.firstMatch(of: #/"installdir"\s+"([^"]+)"/#)?.1
         return Tile(id: "\(bottle)/\(id)", name: String(name), art: art(String(id), steamDir: steamDir),
-                    action: .game(bottle: bottle, appid: String(id)))
+                    action: .game(bottle: bottle, appid: String(id)), process: dir.map { "steamapps\\common\\\($0)\\" })
+    }
+
+    /// Is a process with `marker` in its command line running? Wine shows a program's Windows path there.
+    static func isRunning(_ marker: String) -> Bool {
+        let ps = Process()
+        let out = Pipe()
+        ps.executableURL = URL(filePath: "/bin/ps")
+        ps.arguments = ["-axo", "comm="]
+        ps.standardOutput = out
+        guard (try? ps.run()) != nil else { return false }
+        let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        ps.waitUntilExit()
+        return text.localizedCaseInsensitiveContains(marker)
     }
 
     // Steam caches artwork per appid, sometimes inside hashed sub-folders: prefer the portrait capsule.
