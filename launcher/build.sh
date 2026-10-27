@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: LGPL-2.1-or-later
-# Builds Cuvee.app (quick-launch window) and installs it in ~/Applications.
+# Builds Cuvee.app (quick-launch window) and installs it in /Applications.
 # Signed with a local self-signed certificate so macOS keeps any grant across rebuilds (ad hoc = new identity each build).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -36,8 +36,11 @@ codesign --force --sign "$IDENTITY" --keychain "$KEYCHAIN" --identifier io.githu
 req=$(codesign -d -r- "$APP" 2>&1)
 grep -q 'certificate leaf' <<<"$req" || { echo "signature has no certificate" >&2; exit 1; }
 
-mkdir -p "$HOME/Applications"
-rm -rf "$HOME/Applications/Cuvee.app"
-cp -R "$APP" "$HOME/Applications/"
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$HOME/Applications/Cuvee.app"
-echo "→ ~/Applications/Cuvee.app"
+DEST=/Applications/Cuvee.app
+rm -rf "$DEST"
+cp -R "$APP" "$DEST"
+# builds before 27-10-2026 went to ~/Applications: to the Trash, or Spotlight shows two Cuvee
+OLD="$HOME/Applications/Cuvee.app"
+if [ -d "$OLD" ]; then mv "$OLD" "$HOME/.Trash/Cuvee $(date +%Y%m%d-%H%M%S).app"; fi
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$DEST"
+echo "→ $DEST"

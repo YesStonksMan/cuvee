@@ -75,7 +75,7 @@ cd ~/.cuvee
 ./build-deps.sh       # x86_64 gmp, nettle, gnutls, freetype
 ./build-wine.sh       # Wine + patches -> dist/
 ./cuvee install       # copy dist/ and the CLI to ~/Library/Application Support/Cuvee/runtime
-launcher/build.sh     # optional: ~/Applications/Cuvee.app
+launcher/build.sh     # optional: /Applications/Cuvee.app
 alias cuvee=~/.cuvee/cuvee   # put this in ~/.zshrc to type `cuvee` anywhere
 ```
 
