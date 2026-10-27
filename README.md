@@ -38,7 +38,8 @@ All of them are in `patches/` and are applied by `build-wine.sh` on top of the p
 
 - **`steam-cmdline-flags.patch`** (kernelbase): adds `--no-sandbox --in-process-gpu --disable-gpu` to every
   `steamwebhelper.exe` (otherwise Steam's window stays black; Proton does something similar) and every
-  `Battle.net.exe` (otherwise its sign-in window stays white), and `-no-dwrite` to
+  `Battle.net.exe` (otherwise its sign-in window stays white), `--in-process-gpu --disable-gpu
+  --disable-gpu-compositing` to `3DMark.exe` (otherwise its window stays black), and `-no-dwrite` to
   `gameoverlayui64.exe`/`gameoverlayui.exe` (otherwise the overlay's text, such as the FPS counter, is blank:
   Steam's VGUI draws it through DirectWrite, which renders nothing here; GDI text works).
 - **`dock-app-name.patch`** (ntdll): CrossOver's code names each Dock icon after its program, but kept the `.exe`
@@ -47,7 +48,10 @@ All of them are in `patches/` and are applied by `build-wine.sh` on top of the p
 - **`vulkan-soname-default.patch`** (win32u): Wine is configured without its own Vulkan loader; this points it at
   `libMoltenVK.dylib`.
 - **`dll-path-prepend.patch`** (ntdll): `WINEDLLPATH_PREPEND` is searched before Wine's own DLLs, so a bottle set to
-  `graphics dxmt` loads DXMT's `d3d11`/`dxgi`/`d3d10core` instead of wined3d's.
+  `graphics dxmt` loads DXMT's `d3d11`/`dxgi`/`d3d10core` instead of wined3d's. Wine's `d3d12` (vkd3d) does not
+  work with DXMT's `dxgi`, so a program whose `.exe` imports `d3d12.dll` but not `d3d11.dll` (normal or delay-load
+  imports) skips `WINEDLLPATH_PREPEND` and gets Wine's own `dxgi`; every other program keeps DXMT. A game that imports
+  both (many Unreal Engine games) stays on DXMT and falls back to Direct3D 11 if it can.
 
 `cuvee` also sets `WINE_SIMULATE_WRITECOPY=1` for Battle.net bottles (its CEF renderer crashes in a loop without it)
 and passes Windows paths to `msiexec` (Wine's msiexec crashes on a raw Unix path).
@@ -129,6 +133,9 @@ Tips:
   FPS counter corner to `tests/out/`, then closes Brawlhalla and Steam. Needs Accessibility and Screen Recording
   permission for your terminal. Do not run it while you play.
 - `tests/d3dred.c` is a minimal D3D11 window: `x86_64-w64-mingw32-gcc tests/d3dred.c -o d3dred.exe -ld3d11 -ldxgi -ldxguid -mwindows`.
+- `tests/d3d12green.c` (clear only) and `tests/d3d12tri.c` (HLSL compiled at run time, one triangle) are minimal D3D12
+  windows; each prints every call's HRESULT and the frame count after 20 s:
+  `x86_64-w64-mingw32-gcc tests/d3d12tri.c -o d3d12tri.exe -ld3d12 -ldxgi -ldxguid -ld3dcompiler -mwindows`.
 
 ## License
 
