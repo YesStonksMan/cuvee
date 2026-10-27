@@ -21,6 +21,35 @@ final class LauncherModel: ObservableObject {
     @Published var failure: String?
     @Published var creating = false
     @Published var removing: Bottle?
+    @Published var open: Set<String> = []       // bottles whose programs run, polled: Steam can be quit from its own menu
+    @Published var stopping: Set<String> = []
+    @Published var confirmingStop: Bottle?     // a game of it runs: closing the bottle closes the game
+
+    init() {
+        Task { [weak self] in
+            while let self {
+                let fresh = Set(bottles.map(\.name).filter(Library.isOpen))
+                if fresh != open { open = fresh }
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
+
+    func stop(_ bottle: Bottle, confirmed: Bool = false) {
+        guard !stopping.contains(bottle.name) else { return }
+        let markers = bottle.games.compactMap(\.process)
+        Task {
+            if !confirmed, await Task.detached(operation: { markers.contains(where: Library.isRunning) }).value {
+                confirmingStop = bottle
+                return
+            }
+            let what = tr("Arrêt de « \(bottle.name) »", "Stopping “\(bottle.name)”")
+            if run(["stop", bottle.name], what: what, then: { _ in
+                self.stopping.remove(bottle.name)
+                self.open = self.open.filter(Library.isOpen)
+            }) { stopping.insert(bottle.name) }
+        }
+    }
 
     func refresh() {
         let fresh = Library.bottles()

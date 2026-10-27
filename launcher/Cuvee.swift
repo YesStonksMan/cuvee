@@ -170,6 +170,14 @@ struct RootView: View {
             Text(tr("La bouteille et ce qui y est installé partent à la Corbeille. Tu peux l'en ressortir tant qu'elle n'est pas vidée.",
                     "The bottle and everything installed in it go to the Trash. You can take it back until the Trash is emptied."))
         }
+        .confirmationDialog(tr("Arrêter « \(model.confirmingStop?.name ?? "") » ?", "Stop “\(model.confirmingStop?.name ?? "")”?"),
+                            isPresented: Binding(get: { model.confirmingStop != nil }, set: { if !$0 { model.confirmingStop = nil } }),
+                            presenting: model.confirmingStop) { bottle in
+            Button(tr("Arrêter", "Stop"), role: .destructive) { model.stop(bottle, confirmed: true) }
+        } message: { _ in
+            Text(tr("Un jeu est ouvert dans cette bouteille : il sera fermé aussi. Sauvegarde ta partie avant.",
+                    "A game is open in this bottle: it will close too. Save your game first."))
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.refresh()
         }

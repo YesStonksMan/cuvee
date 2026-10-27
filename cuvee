@@ -16,7 +16,8 @@
 #   cuvee game NAME APPID          launch Steam game APPID in bottle NAME (same path as Steam's Play button)
 #   cuvee run NAME PROGRAM [ARGS]  run a Windows program in bottle NAME
 #   cuvee cfg NAME                 open winecfg for bottle NAME
-#   cuvee kill NAME                stop everything running in bottle NAME
+#   cuvee stop NAME                close the programs of bottle NAME as Windows does at shutdown
+#   cuvee kill NAME                stop everything running in bottle NAME, without letting it save
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
@@ -257,6 +258,10 @@ case "${1:-}" in
              cd "$WINEPREFIX/drive_c/Program Files (x86)/Steam"; exec "$WINE" steam.exe ${CUVEE_STEAM_ARGS:-} "steam://rungameid/$3" ;;
   run)       need_bottle "${2:-}"; shift 2; [ $# -gt 0 ] || die "program required"; refresh; apply_settings; exec "$WINE" "$@" ;;
   cfg)       need_bottle "${2:-}"; refresh; exec "$WINE" winecfg ;;
+  stop)      need_bottle "${2:-}"; running || { echo "bottle '$2' is not running"; exit 0; }
+             # as at a Windows shutdown: each program gets WM_QUERYENDSESSION/WM_ENDSESSION to save, then what is left ends
+             "$WINE" wineboot --end-session --force --shutdown || die "a program in '$2' refused to quit: close it first"
+             exec "$HERE/dist/bin/wineserver" -k ;;
   kill)      need_bottle "${2:-}"; exec "$HERE/dist/bin/wineserver" -k ;;
   *)         sed -n '3,19p' "$0"; exit 1 ;;
 esac

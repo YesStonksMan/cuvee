@@ -79,15 +79,19 @@ struct BottlePage: View {
             }
             Spacer()
             if let opener = bottle.opener {
-                Button { model.start(opener) } label: {
-                    Label(model.launching.contains(opener.id) ? tr("Lancement…", "Launching…") : tr("Démarrer", "Start"),
-                          systemImage: "play.fill")
+                let launching = model.launching.contains(opener.id), stopping = model.stopping.contains(bottle.name)
+                let open = model.open.contains(bottle.name) && !launching
+                Button { open ? model.stop(bottle) : model.start(opener) } label: {
+                    Label(launching ? tr("Lancement…", "Launching…") : stopping ? tr("Arrêt…", "Stopping…")
+                          : open ? tr("Arrêter", "Stop") : tr("Démarrer", "Start"),
+                          systemImage: open || stopping ? "stop.fill" : "play.fill")
                         .frame(minWidth: 110)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(open || stopping ? .red : .accentColor)
                 .controlSize(.large)
-                .disabled(model.launching.contains(opener.id))
-                .keyboardShortcut(.defaultAction)
+                .disabled(launching || stopping)
+                .keyboardShortcut(open ? nil : .defaultAction)   // Return must never close a running launcher
             }
         }
     }

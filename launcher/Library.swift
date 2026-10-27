@@ -131,6 +131,14 @@ enum Library {
                     action: .game(bottle: bottle, appid: String(id)), process: dir.map { "steamapps\\common\\\($0)\\" })
     }
 
+    /// Does a wineserver serve this bottle? Same test as `running()` in the cuvee script (a stat, cheap to poll).
+    static func isOpen(_ bottle: String) -> Bool {
+        var info = stat()
+        guard stat(bottlesDir.appending(path: bottle).path, &info) == 0 else { return false }
+        let dev = String(UInt32(bitPattern: info.st_dev), radix: 16), ino = String(info.st_ino, radix: 16)
+        return FileManager.default.fileExists(atPath: "/private/tmp/.wine-\(getuid())/server-\(dev)-\(ino)/socket")
+    }
+
     /// Is a process with `marker` in its command line running? Wine shows a program's Windows path there.
     static func isRunning(_ marker: String) -> Bool {
         let ps = Process()
