@@ -113,7 +113,8 @@ cuvee import Steam          # clone an existing CrossOver bottle named Steam (AP
 cuvee game Steam 291550     # launch a game by its Steam app id, like the Play button
 cuvee run NAME PROGRAM      # run any Windows program in bottle NAME
 cuvee cfg NAME              # winecfg
-cuvee kill NAME             # stop everything in bottle NAME
+cuvee stop NAME             # close bottle NAME as Windows does at shutdown (programs can save)
+cuvee kill NAME             # stop everything in bottle NAME, without letting it save
 ```
 
 Bottles live in `~/Library/Application Support/Cuvee/Bottles` (`CUVEE_BOTTLES` to change it). Extra Steam
