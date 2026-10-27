@@ -1,0 +1,27 @@
+--- a/dlls/dxgi/factory.c
++++ b/dlls/dxgi/factory.c
+@@ -439,9 +439,22 @@
+ static HRESULT STDMETHODCALLTYPE dxgi_factory_EnumWarpAdapter(IWineDXGIFactory *iface,
+         REFIID iid, void **adapter)
+ {
+-    FIXME("iface %p, iid %s, adapter %p stub!\n", iface, debugstr_guid(iid), adapter);
++    IDXGIAdapter1 *adapter1;
++    HRESULT hr;
+ 
+-    return E_NOTIMPL;
++    /* cuvee: there is no WARP software rasterizer here. Some programs (3DMark Time Spy) ask for it at start-up and
++     * use the result without checking, so hand out the first hardware adapter instead, as DXVK does. */
++    FIXME("iface %p, iid %s, adapter %p, returning the first hardware adapter.\n", iface, debugstr_guid(iid), adapter);
++
++    if (!adapter)
++        return DXGI_ERROR_INVALID_CALL;
++    *adapter = NULL;
++
++    if (FAILED(hr = dxgi_factory_EnumAdapters1(iface, 0, &adapter1)))
++        return hr;
++    hr = IDXGIAdapter1_QueryInterface(adapter1, iid, adapter);
++    IDXGIAdapter1_Release(adapter1);
++    return hr;
+ }
+ 
+ static HRESULT STDMETHODCALLTYPE dxgi_factory_CheckFeatureSupport(IWineDXGIFactory *iface,

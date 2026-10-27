@@ -47,6 +47,8 @@ All of them are in `patches/` and are applied by `build-wine.sh` on top of the p
   process after the program it starts, and shows Steam's window (owned by `steamwebhelper`) as "Steam".
 - **`vulkan-soname-default.patch`** (win32u): Wine is configured without its own Vulkan loader; this points it at
   `libMoltenVK.dylib`.
+- **`dxgi-warp-adapter.patch`** (dxgi): `EnumWarpAdapter` returned nothing; 3DMark Time Spy asks for the WARP
+  software adapter at start-up and crashed on the empty result. It now gets the first hardware adapter, as DXVK does.
 - **`dll-path-prepend.patch`** (ntdll): `WINEDLLPATH_PREPEND` is searched before Wine's own DLLs, so a bottle set to
   `graphics dxmt` loads DXMT's `d3d11`/`dxgi`/`d3d10core` instead of wined3d's. Wine's `d3d12` (vkd3d) does not
   work with DXMT's `dxgi`, so a program whose `.exe` imports `d3d12.dll` but not `d3d11.dll` (normal or delay-load
