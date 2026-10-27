@@ -117,7 +117,7 @@ struct Sidebar: View {
         HStack {
             Label(kind.bottle, systemImage: "gamecontroller")
             Spacer()
-            if let opener = bottle.tiles.first(where: { if case .open = $0.action { true } else { false } }) {
+            if let opener = bottle.opener {
                 if model.launching.contains(opener.id) {
                     ProgressView().controlSize(.small)
                 } else {

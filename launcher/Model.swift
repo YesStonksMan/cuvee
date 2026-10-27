@@ -33,8 +33,7 @@ final class LauncherModel: ObservableObject {
     var plainBottles: [Bottle] { bottles.filter { $0.launcher == nil } }
 
     var games: [Tile] {
-        bottles.flatMap(\.tiles).filter { if case .game = $0.action { true } else { false } }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        bottles.flatMap(\.games).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     func matches(_ text: String) -> Bool {

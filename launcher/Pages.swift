@@ -48,17 +48,14 @@ struct BottlePage: View {
     let bottle: Bottle
     @ObservedObject var model: LauncherModel
 
-    private var opener: Tile? { bottle.tiles.first { if case .open = $0.action { true } else { false } } }
-    private var games: [Tile] { bottle.tiles.filter { if case .game = $0.action { true } else { false } } }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 32) {
                 header
-                if !games.isEmpty {
+                if !bottle.games.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {
                         Text(tr("Jeux", "Games")).font(.title3.weight(.semibold))
-                        TileGrid(tiles: games.filter { model.matches($0.name) }, model: model)
+                        TileGrid(tiles: bottle.games.filter { model.matches($0.name) }, model: model)
                     }
                 }
                 settings
@@ -81,7 +78,7 @@ struct BottlePage: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            if let opener {
+            if let opener = bottle.opener {
                 Button { model.start(opener) } label: {
                     Label(model.launching.contains(opener.id) ? tr("Lancement…", "Launching…") : tr("Démarrer", "Start"),
                           systemImage: "play.fill")

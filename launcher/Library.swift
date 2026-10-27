@@ -65,6 +65,8 @@ struct Bottle: Identifiable, Equatable {
     let metalFX: Bool
     let tiles: [Tile]
     var id: String { name }
+    var opener: Tile? { tiles.first { if case .open = $0.action { true } else { false } } }
+    var games: [Tile] { tiles.filter { if case .game = $0.action { true } else { false } } }
 }
 
 enum Library {
