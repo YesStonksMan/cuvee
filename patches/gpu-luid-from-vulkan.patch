@@ -1,0 +1,41 @@
+--- a/dlls/win32u/d3dkmt.c
++++ b/dlls/win32u/d3dkmt.c
+@@ -1020,6 +1020,8 @@
+         gpu->name = strdup( devinfo[i].properties2.properties.deviceName );
+         gpu->pci_id.vendor = devinfo[i].properties2.properties.vendorID;
+         gpu->pci_id.device = devinfo[i].properties2.properties.deviceID;
++        if ((gpu->luid_valid = devinfo[i].id.deviceLUIDValid))
++            memcpy( &gpu->luid, devinfo[i].id.deviceLUID, sizeof(gpu->luid) );
+ 
+         for (j = 0; j < devinfo[i].mem_properties.memoryHeapCount; j++)
+         {
+--- a/dlls/win32u/sysparams.c
++++ b/dlls/win32u/sysparams.c
+@@ -1758,7 +1758,15 @@
+ 
+     if ((subkey = reg_create_ascii_key( hkey, devpropkey_gpu_luidA, 0, NULL )))
+     {
+-        if (query_reg_value( subkey, NULL, value, sizeof(buffer) ) != sizeof(LUID))
++        /* cuvee: use the Vulkan driver's LUID when it has one. On macOS that is MoltenVK's big-endian Metal
++         * registryID, the same LUID DXMT reports, so a program that reads the adapter LUID through DXMT's dxgi
++         * (3DMark's interface) finds the same adapter through wine's dxgi (Time Spy, in d3d12). */
++        if (vulkan_gpu && vulkan_gpu->luid_valid)
++        {
++            gpu->luid = vulkan_gpu->luid;
++            TRACE("vulkan luid %08x%08x\n", gpu->luid.HighPart, gpu->luid.LowPart );
++        }
++        else if (query_reg_value( subkey, NULL, value, sizeof(buffer) ) != sizeof(LUID))
+         {
+             NtAllocateLocallyUniqueId( &gpu->luid );
+             TRACE("allocated luid %08x%08x\n", gpu->luid.HighPart, gpu->luid.LowPart );
+--- a/dlls/win32u/win32u_private.h
++++ b/dlls/win32u/win32u_private.h
+@@ -203,6 +203,8 @@
+     char *name;
+     GUID uuid;
+     ULONGLONG memory;
++    LUID luid;        /* cuvee: the driver's own LUID, when luid_valid */
++    BOOL luid_valid;
+ };
+ 
+ extern BOOL get_vulkan_gpus( struct list *gpus );

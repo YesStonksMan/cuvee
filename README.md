@@ -49,6 +49,9 @@ All of them are in `patches/` and are applied by `build-wine.sh` on top of the p
   `libMoltenVK.dylib`.
 - **`dxgi-warp-adapter.patch`** (dxgi): `EnumWarpAdapter` returned nothing; 3DMark Time Spy asks for the WARP
   software adapter at start-up and crashed on the empty result. It now gets the first hardware adapter, as DXVK does.
+- **`gpu-luid-from-vulkan.patch`** (win32u): Wine gave the GPU a random LUID, so a program that matches its DXGI
+  adapter against the Vulkan device's LUID (vkd3d, 3DMark Time Spy: "No DXGI adapter with given luid found") found
+  nothing. The GPU now takes the LUID MoltenVK reports, which is also the one DXMT uses.
 - **`dll-path-prepend.patch`** (ntdll): `WINEDLLPATH_PREPEND` is searched before Wine's own DLLs, so a bottle set to
   `graphics dxmt` loads DXMT's `d3d11`/`dxgi`/`d3d10core` instead of wined3d's. Wine's `d3d12` (vkd3d) does not
   work with DXMT's `dxgi`, so a program whose `.exe` imports `d3d12.dll` but not `d3d11.dll` (normal or delay-load
