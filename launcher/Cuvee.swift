@@ -1,87 +1,12 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Cuvee quick-launch window: Steam + every installed Steam game of the "Steam" bottle.
-// Each tile calls the installed runtime CLI (`cuvee steam|game`), which goes through Steam like its Play button.
+// Cuvee window: one section per bottle (its launcher, plus the games of Steam bottles), "+" to add a launcher
+// or an empty bottle, and per-bottle settings and removal. Every action calls the installed runtime CLI.
 import AppKit
 import SwiftUI
-
-private let support = FileManager.default.homeDirectoryForCurrentUser
-    .appending(path: "Library/Application Support/Cuvee")
-private let cli = support.appending(path: "runtime/cuvee")
-private let steamDir = support.appending(path: "Bottles/Steam/drive_c/Program Files (x86)/Steam")
-private let logFile = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Logs/Cuvee.log")
-private let hiddenApps: Set<String> = ["228980"]   // Steamworks Common Redistributables
 
 private let pink = Color(red: 1, green: 0.416, blue: 0.604)      // #ff6a9a, from the app icon
 private let magenta = Color(red: 0.878, green: 0.122, blue: 0.471) // #e01f78
 private let violet = Color(red: 0.478, green: 0.102, blue: 0.651)  // #7a1aa6
-
-struct Tile: Identifiable, Equatable {
-    let id: String          // "steam" or a Steam appid
-    let name: String
-    let art: URL?
-    let image: NSImage?     // decoded once here: views re-render on every hover change
-
-    init(id: String, name: String, art: URL?) {
-        self.id = id
-        self.name = name
-        self.art = art
-        self.image = art.flatMap(NSImage.init(contentsOf:))
-    }
-
-    static func == (a: Tile, b: Tile) -> Bool { a.id == b.id && a.name == b.name && a.art == b.art }
-}
-
-enum Library {
-    static func tiles() -> [Tile] {
-        let steam = Tile(id: "steam", name: "Steam", art: steamDir.appending(path: "public/steam_tray.ico"))
-        return [steam] + games()
-    }
-
-    static func games() -> [Tile] {
-        let apps = steamDir.appending(path: "steamapps")
-        let files = (try? FileManager.default.contentsOfDirectory(at: apps, includingPropertiesForKeys: nil)) ?? []
-        return files
-            .filter { $0.lastPathComponent.hasPrefix("appmanifest_") && $0.pathExtension == "acf" }
-            .compactMap(parseManifest)
-            .filter { !hiddenApps.contains($0.id) }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-    }
-
-    private static func parseManifest(_ url: URL) -> Tile? {
-        guard let text = try? String(contentsOf: url, encoding: .utf8),
-              let id = text.firstMatch(of: #/(?i)"appid"\s+"(\d+)"/#)?.1,
-              let name = text.firstMatch(of: #/"name"\s+"([^"]+)"/#)?.1 else { return nil }
-        return Tile(id: String(id), name: String(name), art: art(for: String(id)))
-    }
-
-    // Steam caches artwork per appid, sometimes inside hashed sub-folders: prefer the portrait capsule.
-    private static func art(for id: String) -> URL? {
-        let dir = steamDir.appending(path: "appcache/librarycache/\(id)")
-        let found = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil)?
-            .compactMap { $0 as? URL } ?? []
-        for wanted in ["library_600x900.jpg", "library_capsule.jpg", "library_header.jpg", "header.jpg"] {
-            if let hit = found.first(where: { $0.lastPathComponent == wanted }) { return hit }
-        }
-        return nil
-    }
-}
-
-enum Launcher {
-    static func launch(_ tile: Tile, onFailure: @escaping @Sendable (Int32) -> Void) throws {
-        if !FileManager.default.fileExists(atPath: logFile.path) {
-            FileManager.default.createFile(atPath: logFile.path, contents: nil)
-        }
-        let log = try FileHandle(forWritingTo: logFile)
-        log.seekToEndOfFile()
-        let process = Process()
-        process.executableURL = URL(filePath: "/bin/bash")
-        process.arguments = tile.id == "steam" ? [cli.path, "steam", "Steam"] : [cli.path, "game", "Steam", tile.id]
-        process.standardOutput = log
-        process.standardError = log
-        process.terminationHandler = { if $0.terminationStatus != 0 { onFailure($0.terminationStatus) } }
-        try process.run()
-    }
-}
 
 struct TileView: View {
     let tile: Tile
@@ -118,12 +43,10 @@ struct TileView: View {
     }
 
     @ViewBuilder private var artwork: some View {
-        if tile.id == "steam" {
+        if case .open = tile.action, let image = tile.image {
             ZStack {
                 LinearGradient(colors: [Color(white: 0.16), Color(white: 0.09)], startPoint: .top, endPoint: .bottom)
-                if let image = tile.image {
-                    Image(nsImage: image).resizable().interpolation(.high).frame(width: 72, height: 72)
-                }
+                Image(nsImage: image).resizable().interpolation(.high).frame(width: 72, height: 72)
             }
         } else if let image = tile.image {
             Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
@@ -146,34 +69,103 @@ struct TileView: View {
     }
 }
 
-// Plain ObservableObject: SwiftUI's @State/@Observable macros need Xcode's plugins, absent with Command Line Tools.
+// Plain ObservableObject: SwiftUI's @Observable macro needs Xcode's plugins, absent with Command Line Tools.
 @MainActor
 final class LauncherModel: ObservableObject {
-    @Published var tiles = Library.tiles()
+    @Published var bottles = Library.bottles()
+    @Published var installing: Set<String> = []
     @Published var launching: Set<String> = []
     @Published var hovered: String?
     @Published var failure: String?
+    @Published var adding = false
+    @Published var editing: Bottle?
+    @Published var removing: Bottle?
 
     func refresh() {
-        let fresh = Library.tiles()
-        if fresh != tiles { tiles = fresh }
+        let fresh = Library.bottles()
+        if fresh != bottles { bottles = fresh }
     }
+
+    func installed(_ kind: LauncherKind) -> Bool { bottles.contains { $0.launcher == kind.id } }
 
     func start(_ tile: Tile) {
         guard !launching.contains(tile.id) else { return }
+        guard run(CLI.args(for: tile.action), what: "Lancement de \(tile.name)") else { return }
+        launching.insert(tile.id)
+        Task {
+            try? await Task.sleep(for: .seconds(6))   // a launcher takes a few seconds to show its window
+            launching.remove(tile.id)
+        }
+    }
+
+    func install(_ kind: LauncherKind) {
+        if run(["add", kind.id], what: "Installation de \(kind.bottle)", then: { _ in self.installing.remove(kind.id) }) {
+            installing.insert(kind.id)
+        }
+    }
+
+    func create(_ name: String) { run(["create", name], what: "Création de « \(name) »") }
+
+    func remove(_ bottle: Bottle) { run(["remove", bottle.name], what: "Suppression de « \(bottle.name) »") }
+
+    func save(_ bottle: Bottle, graphics: Graphics, metalFX: Bool) {
+        let what = "Réglages de « \(bottle.name) »"
+        run(["set", bottle.name, "graphics", graphics.rawValue], what: what, refreshing: false) { ok in
+            if ok { self.run(["set", bottle.name, "metalfx", metalFX ? "on" : "off"], what: what) } else { self.refresh() }
+        }
+    }
+
+    /// Runs the CLI; on exit reports a failure, refreshes the bottles (unless told not to), then calls `then(succeeded)`.
+    @discardableResult
+    private func run(_ args: [String], what: String, refreshing: Bool = true,
+                     then: @escaping @MainActor (Bool) -> Void = { _ in }) -> Bool {
         do {
-            let name = tile.name
-            try Launcher.launch(tile) { status in
-                Task { @MainActor in self.failure = "Lancement de \(name) échoué (code \(status)), voir ~/Library/Logs/Cuvee.log" }
+            try CLI.run(args) { status in
+                Task { @MainActor in
+                    if status != 0 { self.failure = "\(what) : échec (code \(status)), voir ~/Library/Logs/Cuvee.log" }
+                    if refreshing { self.refresh() }
+                    then(status == 0)
+                }
             }
             failure = nil
-            launching.insert(tile.id)
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(6))   // Steam takes a few seconds to show the game window
-                self.launching.remove(tile.id)
-            }
+            return true
         } catch {
-            failure = "Impossible de lancer \(tile.name) : \(error.localizedDescription)"
+            failure = "\(what) : \(error.localizedDescription)"
+            return false
+        }
+    }
+}
+
+struct BottleSection: View {
+    let bottle: Bottle
+    @ObservedObject var model: LauncherModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Text(bottle.name).font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                Text(bottle.graphics.label + (bottle.metalFX ? " · MetalFX" : ""))
+                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.5))
+                Spacer()
+                Button { model.editing = bottle } label: { Image(systemName: "gearshape") }
+                    .help("Réglages")
+                Button { model.removing = bottle } label: { Image(systemName: "trash") }
+                    .help("Mettre à la Corbeille")
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.white.opacity(0.75))
+            if bottle.tiles.isEmpty {
+                Text("Bouteille vide.").font(.system(size: 13)).foregroundStyle(.white.opacity(0.6))
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 150), spacing: 24, alignment: .top)],
+                          alignment: .leading, spacing: 28) {
+                    ForEach(bottle.tiles) { tile in
+                        TileView(tile: tile, launching: model.launching.contains(tile.id),
+                                 hovered: model.hovered == tile.id,
+                                 onHover: { over in model.hovered = over ? tile.id : nil }) { model.start(tile) }
+                    }
+                }
+            }
         }
     }
 }
@@ -183,22 +175,19 @@ struct QuickLaunchView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Text("Démarrage rapide")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(.white)
-                if model.tiles.count == 1 {
-                    Text("Aucun jeu installé dans Steam pour l'instant.")
+            VStack(alignment: .leading, spacing: 32) {
+                HStack {
+                    Text("Cuvee").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
+                    Spacer()
+                    Button { model.adding = true } label: { Image(systemName: "plus").font(.system(size: 15, weight: .semibold)) }
+                        .buttonStyle(.borderless).foregroundStyle(.white.opacity(0.85))
+                        .help("Ajouter un lanceur ou une bouteille")
+                }
+                if model.bottles.isEmpty {
+                    Text("Aucune bouteille. Clique sur + pour installer un lanceur.")
                         .font(.system(size: 13)).foregroundStyle(.white.opacity(0.6))
                 }
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 150), spacing: 24, alignment: .top)],
-                          alignment: .leading, spacing: 28) {
-                    ForEach(model.tiles) { tile in
-                        TileView(tile: tile, launching: model.launching.contains(tile.id),
-                                 hovered: model.hovered == tile.id,
-                                 onHover: { over in model.hovered = over ? tile.id : nil }) { model.start(tile) }
-                    }
-                }
+                ForEach(model.bottles) { BottleSection(bottle: $0, model: model) }
                 if let failure = model.failure {
                     Text(failure).font(.system(size: 12)).foregroundStyle(pink)
                 }
@@ -208,6 +197,15 @@ struct QuickLaunchView: View {
         }
         .background(Color(red: 0.078, green: 0.067, blue: 0.106))   // #14111b
         .frame(minWidth: 560, minHeight: 420)
+        .sheet(isPresented: $model.adding) { AddSheet(model: model) }
+        .sheet(item: $model.editing) { SettingsSheet(bottle: $0, model: model) }
+        .confirmationDialog("Mettre « \(model.removing?.name ?? "") » à la Corbeille ?",
+                            isPresented: Binding(get: { model.removing != nil }, set: { if !$0 { model.removing = nil } }),
+                            presenting: model.removing) { bottle in
+            Button("Mettre à la Corbeille", role: .destructive) { model.remove(bottle) }
+        } message: { _ in
+            Text("La bouteille et ce qui y est installé partent à la Corbeille. Tu peux l'en ressortir tant qu'elle n'est pas vidée.")
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.refresh()
         }

@@ -1,18 +1,20 @@
 --- a/dlls/kernelbase/process.c
 +++ b/dlls/kernelbase/process.c
-@@ -564,6 +564,36 @@
+@@ -564,6 +564,38 @@
              FIXME("HACK: not starting powershell.exe.\n");
              SetLastError( ERROR_FILE_NOT_FOUND );
              return FALSE;
 +        }
 +    }
 +
-+    /* cuvee: extra command-line flags some Steam programs need under Wine */
++    /* cuvee: extra command-line flags some programs need under Wine */
 +    {
 +        static const struct { const WCHAR *exe, *flags; } extra[] =
 +        {
 +            /* CEF renders black unless every helper gets these (same flags as Proton's steamwebhelper hack) */
 +            { L"steamwebhelper.exe", L" --no-sandbox --in-process-gpu --disable-gpu" },
++            /* Battle.net's CEF renderer hits a CHECK (int3) inside the Chromium sandbox under Wine */
++            { L"Battle.net.exe", L" --no-sandbox --in-process-gpu --disable-gpu" },
 +            /* the overlay's VGUI text (FPS counter) comes out blank through DirectWrite: use GDI text */
 +            { L"gameoverlayui64.exe", L" -no-dwrite" },
 +            { L"gameoverlayui.exe", L" -no-dwrite" },

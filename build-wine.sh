@@ -46,6 +46,16 @@ make install
 mkdir -p "$DIST/lib"
 cp -a "$DEPS"/lib/*.dylib "$DIST/lib/"
 
+# DXMT, used by bottles set to "graphics dxmt" (cuvee puts dist/lib/dxmt before wine's own dlls)
+if [ -f "$ROOT/src/dxmt-v0.80-builtin.tar.gz" ]; then
+  rm -rf "$DIST/lib/dxmt"; mkdir -p "$DIST/lib/dxmt"
+  tar -xzf "$ROOT/src/dxmt-v0.80-builtin.tar.gz" -C "$DIST/lib/dxmt" --strip-components=1
+fi
+
+# Wine Gecko, installed into each new bottle by wineboot (wine looks in share/wine/gecko)
+mkdir -p "$DIST/share/wine/gecko"
+cp "$ROOT"/src/wine-gecko-2.47.4-x86*.msi "$DIST/share/wine/gecko/"
+
 # MoltenVK (Vulkan->Metal, needed by wined3d's Vulkan renderer for D3D10/11): CodeWeavers' fork, Apache-2.0.
 # Not shipped with Cuvee: taken from your own CrossOver install, or put your own build in dist/lib (see README).
 MVK_TESTED_SHA=9343e68e5183c22e   # CrossOver 26.3's build, the one Cuvee was tested with

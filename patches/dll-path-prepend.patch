@@ -1,0 +1,25 @@
+--- a/dlls/ntdll/unix/loader.c
++++ b/dlls/ntdll/unix/loader.c
+@@ -387,13 +387,22 @@
+ static void set_dll_path(void)
+ {
+     char *p, *path = getenv( "WINEDLLPATH" );
++    /* cuvee: directories searched before wine's own, e.g. DXMT's d3d11/dxgi for one bottle */
++    char *first = getenv( "WINEDLLPATH_PREPEND" );
+     int i, count = 0;
+ 
+     if (path) for (p = path, count = 1; *p; p++) if (*p == ':') count++;
++    if (first && *first) for (p = first, count++; *p; p++) if (*p == ':') count++;
+ 
+     dll_paths = malloc( (count + 2) * sizeof(*dll_paths) );
+     count = 0;
+ 
++    if (first && *first)
++    {
++        first = strdup(first);
++        for (p = strtok( first, ":" ); p; p = strtok( NULL, ":" )) dll_paths[count++] = strdup( p );
++        free( first );
++    }
+     if (!build_dir) dll_paths[count++] = dll_dir;
+ 
+     if (path)

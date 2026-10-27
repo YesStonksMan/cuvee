@@ -2,8 +2,15 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # cuvee — minimal Wine bottle manager on top of our own build of CrossOver 26.3's Wine.
 #   cuvee install                  install a runnable copy in ~/Library/Application Support/Cuvee/runtime
+#   cuvee setup                    offer to install the game launchers (asked once after the first install)
+#   cuvee launchers                list the launchers cuvee can install
+#   cuvee add LAUNCHER             install a launcher in its own bottle: steam epic ea battlenet ubisoft
+#   cuvee open NAME                start the launcher of bottle NAME
 #   cuvee list                     list bottles
-#   cuvee create NAME              create a Windows 10 bottle
+#   cuvee create NAME              create an empty Windows 10 bottle
+#   cuvee remove NAME              move bottle NAME to the Trash
+#   cuvee settings NAME            show the settings of bottle NAME
+#   cuvee set NAME KEY VALUE       graphics vulkan|opengl|dxmt, metalfx on|off (needs dxmt)
 #   cuvee import NAME              clone a CrossOver bottle (no extra disk)
 #   cuvee steam [NAME]             install (first time) and launch Steam in bottle NAME (default: Steam)
 #   cuvee game NAME APPID          launch Steam game APPID in bottle NAME (same path as Steam's Play button)
@@ -14,8 +21,10 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 WINE="$HERE/dist/bin/wine"
-BOTTLES="${CUVEE_BOTTLES:-$HOME/Library/Application Support/Cuvee/Bottles}"
-STEAM_URL="https://cdn.cloudflare.steamstatic.com/client/installer/SteamSetup.exe"
+SUPPORT="$HOME/Library/Application Support/Cuvee"
+BOTTLES="${CUVEE_BOTTLES:-$SUPPORT/Bottles}"
+DOWNLOADS="$SUPPORT/Downloads"
+LAUNCHERS="steam epic ea battlenet ubisoft"
 
 export WINEDEBUG="${WINEDEBUG:--all}"
 export WINEMSYNC="${WINEMSYNC:-1}"   # CrossOver's mach-semaphore sync
@@ -27,7 +36,64 @@ die() { echo "cuvee: $*" >&2; exit 1; }
 
 bottle() { # NAME -> sets WINEPREFIX
   [ -n "${1:-}" ] || die "bottle name required"
+  case "$1" in */*|.|..) die "invalid bottle name '$1'";; esac
   export WINEPREFIX="$BOTTLES/$1"
+}
+
+need_bottle() { bottle "$1"; [ -d "$WINEPREFIX/drive_c" ] || die "no bottle '$1'"; }
+
+# --- per-bottle settings: key=value lines in <bottle>/cuvee.conf ---
+
+setting() { # KEY [DEFAULT]
+  local key val
+  [ -f "$WINEPREFIX/cuvee.conf" ] && while IFS='=' read -r key val; do
+    [ "$key" = "$1" ] && { echo "$val"; return; }
+  done < "$WINEPREFIX/cuvee.conf"
+  echo "${2:-}"
+}
+
+set_setting() { # KEY VALUE
+  local conf="$WINEPREFIX/cuvee.conf"
+  { [ -f "$conf" ] && grep -v "^$1=" "$conf" || true; echo "$1=$2"; } > "$conf.new"
+  mv "$conf.new" "$conf"
+}
+
+apply_settings() { # environment for the bottle's settings and launcher, read at every launch
+  case "$(setting graphics vulkan)" in
+    opengl) export WINE_D3D_CONFIG="renderer=gl" ;;
+    dxmt)   [ -d "$HERE/dist/lib/dxmt" ] || die "DXMT is not installed in this build (see README)"
+            export WINEDLLPATH_PREPEND="$HERE/dist/lib/dxmt"   # DXMT's d3d11/dxgi/d3d10core/nvngx before wined3d's
+            [ "$(setting metalfx off)" = on ] && export DXMT_METALFX_SPATIAL_SWAPCHAIN=1 ;;
+  esac
+  # Battle.net's CEF renderer crashes (int3) in a loop without simulated copy-on-write mappings
+  [ "$(setting launcher)" = battlenet ] && export WINE_SIMULATE_WRITECOPY=1
+  return 0
+}
+
+set_cmd() { # NAME KEY VALUE
+  need_bottle "$1"
+  case "$2=${3:-}" in
+    graphics=vulkan|graphics=opengl|graphics=dxmt|metalfx=on|metalfx=off) set_setting "$2" "$3" ;;
+    *) die "usage: cuvee set NAME graphics vulkan|opengl|dxmt | metalfx on|off" ;;
+  esac
+  if [ "$2" = metalfx ] && [ "$3" = on ] && [ "$(setting graphics vulkan)" != dxmt ]; then echo "note: MetalFX only works with graphics dxmt"; fi
+  echo "$1: $2=$3"
+}
+
+settings_cmd() {
+  need_bottle "$1"
+  echo "graphics=$(setting graphics vulkan)"
+  echo "metalfx=$(setting metalfx off)"
+  [ -n "$(setting launcher)" ] && echo "launcher=$(setting launcher)"
+  return 0
+}
+
+# --- bottles ---
+
+running() { # is a wineserver serving this bottle? (its socket lives under /tmp/.wine-UID/server-DEV-INODE)
+  local dev ino
+  read -r dev ino < <(stat -f '%d %i' "$WINEPREFIX")
+  [ -S "/private/tmp/.wine-$(id -u)/server-$(printf %x "$dev")-$(printf %x "$ino")/socket" ]
 }
 
 refresh() { # wine was rebuilt since the bottle's last update: update it now, without the Mono/Gecko prompts wine would show
@@ -46,24 +112,17 @@ create() {
   WINEDLLOVERRIDES="mscoree,mshtml=" "$WINE" wineboot --init   # skip Mono/Gecko install prompts
   "$HERE/dist/bin/wineserver" -w
   "$WINE" winecfg -v win10 >/dev/null 2>&1 || true
+  "$HERE/dist/bin/wineserver" -w
   echo "bottle '$1' ready: $WINEPREFIX"
 }
 
-steam() {
-  local name="${1:-Steam}"
-  create "$name"; refresh
-  local exe="$WINEPREFIX/drive_c/Program Files (x86)/Steam/steam.exe"
-  if [ ! -f "$exe" ]; then
-    local setup="$WINEPREFIX/drive_c/SteamSetup.exe"
-    echo "downloading Steam installer from Valve..."
-    curl -fL --retry 3 -o "$setup" "$STEAM_URL"
-    "$WINE" "$setup" /S
-    "$HERE/dist/bin/wineserver" -w
-    rm -f "$setup"
-    [ -f "$exe" ] || die "Steam install failed"
-  fi
-  cd "$(dirname "$exe")"
-  exec "$WINE" steam.exe ${CUVEE_STEAM_ARGS:-}
+remove() { # to the Trash, never deleted: a bottle holds installed games and saves
+  need_bottle "$1"
+  running && die "bottle '$1' is running: quit its programs first (or: cuvee kill '$1')"
+  local dst="$HOME/.Trash/$1 (Cuvee bottle)"
+  [ -e "$dst" ] && dst="$dst $(date +%Y%m%d-%H%M%S)"
+  mv "$WINEPREFIX" "$dst"
+  echo "bottle '$1' moved to the Trash"
 }
 
 import() { # clone a CrossOver bottle (APFS clonefile: instant, no extra disk until files change)
@@ -76,25 +135,123 @@ import() { # clone a CrossOver bottle (APFS clonefile: instant, no extra disk un
   echo "imported '$1' -> $WINEPREFIX"
 }
 
+# --- launchers ---
+
+launcher() { # ID -> L_NAME (bottle), L_URL, L_FILE, L_EXE (under drive_c), L_ARGS
+  L_ARGS=""
+  case "$1" in
+    steam)     L_NAME="Steam" L_FILE="SteamSetup.exe"
+               L_URL="https://cdn.cloudflare.steamstatic.com/client/installer/SteamSetup.exe"
+               L_EXE="Program Files (x86)/Steam/steam.exe" ;;
+    epic)      L_NAME="Epic Games" L_FILE="EpicGamesLauncherInstaller.msi"
+               L_URL="https://launcher-public-service-prod06.ol.epicgames.com/launcher/api/installer/download/EpicGamesLauncherInstaller.msi"
+               L_EXE="Program Files/Epic Games/Launcher/Portal/Binaries/Win64/EpicGamesLauncher.exe"
+               L_ARGS="-SkipBuildPatchPrereq" ;;
+    ea)        L_NAME="EA app" L_FILE="EAappInstaller.exe"
+               L_URL="https://origin-a.akamaihd.net/EA-Desktop-Client-Download/installer-releases/EAappInstaller.exe"
+               L_EXE="Program Files/Electronic Arts/EA Desktop/EA Desktop/EALauncher.exe" ;;
+    battlenet) L_NAME="Battle.net" L_FILE="Battle.net-Setup.exe"
+               L_URL="https://downloader.battle.net/download/getInstallerForGame?os=win&gameProgram=BATTLENET_APP&version=Live"
+               L_EXE="Program Files (x86)/Battle.net/Battle.net Launcher.exe" ;;
+    ubisoft)   L_NAME="Ubisoft Connect" L_FILE="UbisoftConnectInstaller.exe"
+               L_URL="https://static3.cdn.ubi.com/orbit/launcher_installer/UbisoftConnectInstaller.exe"
+               L_EXE="Program Files (x86)/Ubisoft/Ubisoft Game Launcher/UbisoftConnect.exe" ;;
+    *) die "unknown launcher '$1' (one of: $LAUNCHERS)" ;;
+  esac
+}
+
+fetch() { # ID FILE URL -> prints the cached path; downloads only what is missing
+  local dir="$DOWNLOADS/$1"
+  mkdir -p "$dir"
+  if [ ! -s "$dir/$2" ]; then
+    echo "downloading $2..." >&2
+    curl -fL --retry 3 -o "$dir/$2.part" "$3" >&2
+    mv "$dir/$2.part" "$dir/$2"
+  fi
+  echo "$dir/$2"
+}
+
+vcredist() { # Microsoft Visual C++ 2015-2022, which every launcher but Steam needs
+  "$WINE" "$(fetch vcredist vc_redist.x64.exe https://aka.ms/vc14/vc_redist.x64.exe)" /install /quiet /norestart || true
+  "$WINE" "$(fetch vcredist vc_redist.x86.exe https://aka.ms/vc14/vc_redist.x86.exe)" /install /quiet /norestart || true
+  "$HERE/dist/bin/wineserver" -w
+}
+
+add() { # ID
+  launcher "$1"
+  create "$L_NAME"; refresh
+  local exe="$WINEPREFIX/drive_c/$L_EXE" setup
+  if [ -f "$exe" ]; then echo "$L_NAME is already installed"; set_setting launcher "$1"; return; fi
+  setup="$(fetch "$1" "$L_FILE" "$L_URL")"
+  echo "installing $L_NAME..."
+  case "$1" in
+    steam)     "$WINE" "$setup" /S ;;
+    epic)      vcredist; "$WINE" msiexec /i "$("$WINE" winepath -w "$setup" | tr -d '\r')" /q ;;   # msiexec crashes on a raw unix path (MSI_OpenPackageW → CopyFileW)
+    ea)        vcredist; "$WINE" "$setup" EAX_LAUNCH_CLIENT=0 ;;
+    battlenet) vcredist
+               "$WINE" reg add 'HKCU\Software\Wine\DllOverrides' /v systemsurvey.exe /d "" /f >/dev/null   # its system checker hangs
+               WINE_SIMULATE_WRITECOPY=1 WINE_WAIT_CHILD_PIPE_IGNORE=Agent.exe "$WINE" "$setup" --lang=frFR --installpath="C:\\Program Files (x86)\\Battle.net" ;;
+    ubisoft)   vcredist; "$WINE" "$setup" /S ;;
+  esac
+  "$HERE/dist/bin/wineserver" -w
+  [ -f "$exe" ] || die "$L_NAME install did not finish (no $L_EXE)"
+  set_setting launcher "$1"
+  echo "$L_NAME installed: cuvee open '$L_NAME'"
+}
+
+open_cmd() { # NAME
+  need_bottle "$1"; refresh; apply_settings
+  local id; id="$(setting launcher)"
+  [ -z "$id" ] && [ "$1" = Steam ] && id=steam   # bottles from before launchers were recorded
+  [ -n "$id" ] || die "bottle '$1' has no launcher (use: cuvee run '$1' PROGRAM)"
+  launcher "$id"
+  cd "$(dirname "$WINEPREFIX/drive_c/$L_EXE")"
+  exec "$WINE" "$(basename "$L_EXE")" $L_ARGS ${CUVEE_STEAM_ARGS:-}
+}
+
+setup() { # interactive: offer each launcher that is not installed yet
+  local id answer todo=""
+  echo "Cuvee can install these game launchers, each in its own bottle (downloaded from the vendor):"
+  for id in $LAUNCHERS; do
+    launcher "$id"
+    [ -f "$BOTTLES/$L_NAME/drive_c/$L_EXE" ] && { echo "  $L_NAME: already installed"; continue; }
+    read -r -p "  Install $L_NAME? [y/N] " answer
+    case "$answer" in [yYoO]*) todo="$todo $id" ;; esac
+  done
+  for id in $todo; do ( add "$id" ) || echo "cuvee: $id failed, retry later with: cuvee add $id" >&2; done
+  return 0
+}
+
 install() { # copy cuvee + dist outside ~/Desktop (TCC blocks Finder-launched apps there); APFS clone, no extra disk
-  local dst="$HOME/Library/Application Support/Cuvee/runtime"
+  local dst="$SUPPORT/runtime" first=1
   pgrep -f "[C]uvee/runtime/dist/" >/dev/null && die "quit Steam and games first (they run from $dst)"
+  [ -d "$dst" ] && first=0
   rm -rf "$dst.new"; mkdir -p "$dst.new"
   cp -cR "$HERE/dist" "$dst.new/dist"; cp "$HERE/cuvee" "$dst.new/cuvee"
   rm -rf "$dst"; mv "$dst.new" "$dst"
   echo "installed -> $dst"
+  if [ "$first" = 1 ] && [ -t 0 ] && [ -z "${CUVEE_NO_SETUP:-}" ]; then "$dst/cuvee" setup; fi
 }
 
 case "${1:-}" in
-  install) install ;;
-  list)   ls -1 "$BOTTLES" 2>/dev/null || true ;;
-  import) import "${2:-}" ;;
-  create) create "${2:-}" ;;
-  steam)  steam "${2:-}" ;;
-  game)   bottle "${2:-}"; [[ "${3:-}" =~ ^[0-9]+$ ]] || die "steam appid required"; refresh
-          cd "$WINEPREFIX/drive_c/Program Files (x86)/Steam"; exec "$WINE" steam.exe ${CUVEE_STEAM_ARGS:-} "steam://rungameid/$3" ;;
-  run)    bottle "${2:-}"; shift 2; [ $# -gt 0 ] || die "program required"; refresh; exec "$WINE" "$@" ;;
-  cfg)    bottle "${2:-}"; refresh; exec "$WINE" winecfg ;;
-  kill)   bottle "${2:-}"; exec "$HERE/dist/bin/wineserver" -k ;;
-  *)      sed -n '3,12p' "$0"; exit 1 ;;
+  install)   install ;;
+  setup)     setup ;;
+  launchers) for id in $LAUNCHERS; do launcher "$id"; echo "$id  $L_NAME"; done ;;
+  add)       add "${2:-}" ;;
+  open)      open_cmd "${2:-}" ;;
+  list)      ls -1 "$BOTTLES" 2>/dev/null || true ;;
+  import)    import "${2:-}" ;;
+  create)    create "${2:-}" ;;
+  remove)    remove "${2:-}" ;;
+  settings)  settings_cmd "${2:-}" ;;
+  set)       set_cmd "${2:-}" "${3:-}" "${4:-}" ;;
+  steam)     launcher steam; L_NAME="${2:-Steam}"; bottle "$L_NAME"
+             [ -f "$WINEPREFIX/drive_c/$L_EXE" ] || add steam
+             open_cmd "$L_NAME" ;;
+  game)      need_bottle "${2:-}"; [[ "${3:-}" =~ ^[0-9]+$ ]] || die "steam appid required"; refresh; apply_settings
+             cd "$WINEPREFIX/drive_c/Program Files (x86)/Steam"; exec "$WINE" steam.exe ${CUVEE_STEAM_ARGS:-} "steam://rungameid/$3" ;;
+  run)       need_bottle "${2:-}"; shift 2; [ $# -gt 0 ] || die "program required"; refresh; apply_settings; exec "$WINE" "$@" ;;
+  cfg)       need_bottle "${2:-}"; refresh; exec "$WINE" winecfg ;;
+  kill)      need_bottle "${2:-}"; exec "$HERE/dist/bin/wineserver" -k ;;
+  *)         sed -n '3,19p' "$0"; exit 1 ;;
 esac
