@@ -1,6 +1,13 @@
 --- a/dlls/ntdll/unix/loader.c
 +++ b/dlls/ntdll/unix/loader.c
-@@ -387,13 +387,22 @@
+@@ -383,17 +383,31 @@
+     if (path_len > dll_path_maxlen)
+         dll_path_maxlen = path_len;
+ }
++
++/* cuvee: the WINEDLLPATH_PREPEND entries of dll_paths, NULL-terminated (see skip_dll_path_prepend) */
++static const char **prepend_paths;
+ 
  static void set_dll_path(void)
  {
      char *p, *path = getenv( "WINEDLLPATH" );
@@ -12,14 +19,120 @@
 +    if (first && *first) for (p = first, count++; *p; p++) if (*p == ':') count++;
  
      dll_paths = malloc( (count + 2) * sizeof(*dll_paths) );
++    prepend_paths = calloc( count + 1, sizeof(*prepend_paths) );
      count = 0;
  
 +    if (first && *first)
 +    {
 +        first = strdup(first);
-+        for (p = strtok( first, ":" ); p; p = strtok( NULL, ":" )) dll_paths[count++] = strdup( p );
++        for (p = strtok( first, ":" ); p; p = strtok( NULL, ":" ), count++)
++            prepend_paths[count] = dll_paths[count] = strdup( p );
 +        free( first );
 +    }
      if (!build_dir) dll_paths[count++] = dll_dir;
  
      if (path)
+@@ -1776,7 +1790,95 @@
+     return status;
+ }
+ 
++
++/* cuvee: number of readable bytes from rva to the end of its section, 0 if rva is in no readable section */
++static ULONG image_readable( const IMAGE_NT_HEADERS *nt, ULONG rva )
++{
++    const IMAGE_SECTION_HEADER *sec = IMAGE_FIRST_SECTION( nt );
++    ULONG i, vsize;
+ 
++    for (i = 0; i < nt->FileHeader.NumberOfSections; i++, sec++)
++    {
++        vsize = sec->Misc.VirtualSize ? sec->Misc.VirtualSize : sec->SizeOfRawData;
++        if ((sec->Characteristics & IMAGE_SCN_MEM_READ) && rva >= sec->VirtualAddress &&
++            rva - sec->VirtualAddress < vsize)
++            return vsize - (rva - sec->VirtualAddress);
++    }
++    return 0;
++}
++
++/* cuvee: does the mapped image import dll, either normally or delay-loaded.
++ * Only reads inside readable sections, so a packed or odd executable cannot make it fault. */
++static BOOL image_imports( const char *base, const char *dll )
++{
++    const IMAGE_DOS_HEADER *dos = (const IMAGE_DOS_HEADER *)base;
++    const IMAGE_NT_HEADERS *nt = (const IMAGE_NT_HEADERS *)(base + dos->e_lfanew);
++    const IMAGE_DATA_DIRECTORY *dirs;
++    ULONGLONG image_base;
++    ULONG count, rva, name, len;
++
++    if (dos->e_magic != IMAGE_DOS_SIGNATURE || nt->Signature != IMAGE_NT_SIGNATURE) return FALSE;
++    if (nt->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC)
++    {
++        const IMAGE_NT_HEADERS64 *nt64 = (const IMAGE_NT_HEADERS64 *)nt;
++        dirs = nt64->OptionalHeader.DataDirectory;
++        count = nt64->OptionalHeader.NumberOfRvaAndSizes;
++        image_base = nt64->OptionalHeader.ImageBase;
++    }
++    else if (nt->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC)
++    {
++        const IMAGE_NT_HEADERS32 *nt32 = (const IMAGE_NT_HEADERS32 *)nt;
++        dirs = nt32->OptionalHeader.DataDirectory;
++        count = nt32->OptionalHeader.NumberOfRvaAndSizes;
++        image_base = nt32->OptionalHeader.ImageBase;
++    }
++    else return FALSE;
++
++#define NAME_IS_DLL(r) ((len = image_readable( nt, (r) )) && memchr( base + (r), 0, len ) && !strcasecmp( base + (r), dll ))
++    if (count > IMAGE_DIRECTORY_ENTRY_IMPORT && (rva = dirs[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress))
++    {
++        for (; image_readable( nt, rva ) >= sizeof(IMAGE_IMPORT_DESCRIPTOR); rva += sizeof(IMAGE_IMPORT_DESCRIPTOR))
++        {
++            const IMAGE_IMPORT_DESCRIPTOR *desc = (const IMAGE_IMPORT_DESCRIPTOR *)(base + rva);
++            if (!desc->Name) break;
++            if (NAME_IS_DLL( desc->Name )) return TRUE;
++        }
++    }
++    if (count > IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT && (rva = dirs[IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT].VirtualAddress))
++    {
++        for (; image_readable( nt, rva ) >= sizeof(IMAGE_DELAYLOAD_DESCRIPTOR); rva += sizeof(IMAGE_DELAYLOAD_DESCRIPTOR))
++        {
++            const IMAGE_DELAYLOAD_DESCRIPTOR *desc = (const IMAGE_DELAYLOAD_DESCRIPTOR *)(base + rva);
++            if (!desc->DllNameRVA) break;
++            /* old-style descriptors hold virtual addresses instead of RVAs */
++            name = desc->Attributes.RvaBased ? desc->DllNameRVA : (ULONG)(desc->DllNameRVA - image_base);
++            if (NAME_IS_DLL( name )) return TRUE;
++        }
++    }
++#undef NAME_IS_DLL
++    return FALSE;
++}
++
++/* cuvee: DXMT (WINEDLLPATH_PREPEND) replaces dxgi.dll, and wine's d3d12 cannot work with DXMT's dxgi
++ * (D3D12CreateDevice fails with E_NOINTERFACE). A program that imports d3d12.dll but not d3d11.dll only
++ * speaks Direct3D 12, so it gets wine's own dxgi and vkd3d; everything else keeps DXMT. */
++static void skip_dll_path_prepend( const char *base, const UNICODE_STRING *nt_name )
++{
++    unsigned int i, j, k;
++
++    if (!prepend_paths || !prepend_paths[0]) return;
++    if (!image_imports( base, "d3d12.dll" ) || image_imports( base, "d3d11.dll" )) return;
++
++    for (i = j = 0; dll_paths[i]; i++)
++    {
++        for (k = 0; prepend_paths[k]; k++) if (dll_paths[i] == prepend_paths[k]) break;
++        if (!prepend_paths[k]) dll_paths[j++] = dll_paths[i];
++    }
++    dll_paths[j] = NULL;
++    TRACE( "%s imports d3d12.dll but not d3d11.dll, ignoring WINEDLLPATH_PREPEND\n", debugstr_us(nt_name) );
++}
++
++
+ /***********************************************************************
+  *           load_main_exe
+  */
+@@ -1788,6 +1890,7 @@
+     USHORT search_machine;
+ 
+     status = open_main_image( nt_name, module, &main_image_info, loadorder, load_machine );
++    if (NT_SUCCESS(status)) skip_dll_path_prepend( *module, nt_name );
+     if (status != STATUS_DLL_NOT_FOUND) return status;
+ 
+     /* if path is in system dir, we can load the builtin even if the file itself doesn't exist */

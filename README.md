@@ -24,7 +24,7 @@ Tested on an Apple Silicon Mac with macOS 27, through Rosetta 2.
 
 | Works | Not yet |
 | --- | --- |
-| Steam: login, store, library, Play button | DirectX 12 (no vkd3d build yet) |
+| Steam: login, store, library, Play button | Heavy DirectX 12: 3DMark Time Spy hits MoltenVK limits (black screen) |
 | Steam overlay FPS counter | DXVK (wined3d is used for D3D10/11) |
 | D3D10/11 games through wined3d + MoltenVK (Kenshi, Brawlhalla tested) | Games with kernel anti-cheat |
 | D3D10/11 on Metal through DXMT (Kenshi in game, 2560×1440); MetalFX upscaling not measured yet | Ubisoft Connect: installs, window stays white |
@@ -38,7 +38,8 @@ All of them are in `patches/` and are applied by `build-wine.sh` on top of the p
 
 - **`steam-cmdline-flags.patch`** (kernelbase): adds `--no-sandbox --in-process-gpu --disable-gpu` to every
   `steamwebhelper.exe` (otherwise Steam's window stays black; Proton does something similar) and every
-  `Battle.net.exe` (otherwise its sign-in window stays white), and `-no-dwrite` to
+  `Battle.net.exe` (otherwise its sign-in window stays white), `--in-process-gpu --disable-gpu
+  --disable-gpu-compositing` to `3DMark.exe` (otherwise its window stays black), and `-no-dwrite` to
   `gameoverlayui64.exe`/`gameoverlayui.exe` (otherwise the overlay's text, such as the FPS counter, is blank:
   Steam's VGUI draws it through DirectWrite, which renders nothing here; GDI text works).
 - **`dock-app-name.patch`** (ntdll): CrossOver's code names each Dock icon after its program, but kept the `.exe`
@@ -46,8 +47,24 @@ All of them are in `patches/` and are applied by `build-wine.sh` on top of the p
   process after the program it starts, and shows Steam's window (owned by `steamwebhelper`) as "Steam".
 - **`vulkan-soname-default.patch`** (win32u): Wine is configured without its own Vulkan loader; this points it at
   `libMoltenVK.dylib`.
+- **`dxgi-warp-adapter.patch`** (dxgi): `EnumWarpAdapter` returned nothing; 3DMark Time Spy asks for the WARP
+  software adapter at start-up and crashed on the empty result. It now gets the first hardware adapter, as DXVK does.
+- **`gpu-luid-from-vulkan.patch`** (win32u): Wine gave the GPU a random LUID, so a program that matches its DXGI
+  adapter against the Vulkan device's LUID (vkd3d, 3DMark Time Spy: "No DXGI adapter with given luid found") found
+  nothing. The GPU now takes the LUID MoltenVK reports, which is also the one DXMT uses.
+- **`cef-gs-stackbase.patch`** (ntdll): on macOS `%gs:0x8` is not the TEB's stack base. CodeWeavers already patch
+  the Chromium code that reads it in a few known `libcef.dll` versions; this adds 3DMark's CEF 3.2623.1397. Without
+  it Blink took every thread for the main thread, its garbage collector waited 100 ms after each task for a thread
+  it could not wake, and 3DMark's window ran at 0.4 frames per second (60 with the patch).
+- **`mem-reset-undo.patch`** (ntdll): `VirtualAlloc(MEM_RESET_UNDO)` was refused (and Wine's header has the wrong
+  value for it). Chromium locks its discardable memory with it, so every decoded image counted as purged and was
+  decoded again for each tile: 3DMark's lists stuttered when scrolling (252 decodes in 12 s, 13 with the patch).
+  On macOS `MEM_RESET` keeps the pages' contents, so the undo now succeeds there.
 - **`dll-path-prepend.patch`** (ntdll): `WINEDLLPATH_PREPEND` is searched before Wine's own DLLs, so a bottle set to
-  `graphics dxmt` loads DXMT's `d3d11`/`dxgi`/`d3d10core` instead of wined3d's.
+  `graphics dxmt` loads DXMT's `d3d11`/`dxgi`/`d3d10core` instead of wined3d's. Wine's `d3d12` (vkd3d) does not
+  work with DXMT's `dxgi`, so a program whose `.exe` imports `d3d12.dll` but not `d3d11.dll` (normal or delay-load
+  imports) skips `WINEDLLPATH_PREPEND` and gets Wine's own `dxgi`; every other program keeps DXMT. A game that imports
+  both (many Unreal Engine games) stays on DXMT and falls back to Direct3D 11 if it can.
 
 `cuvee` also sets `WINE_SIMULATE_WRITECOPY=1` for Battle.net bottles (its CEF renderer crashes in a loop without it)
 and passes Windows paths to `msiexec` (Wine's msiexec crashes on a raw Unix path).
@@ -129,6 +146,9 @@ Tips:
   FPS counter corner to `tests/out/`, then closes Brawlhalla and Steam. Needs Accessibility and Screen Recording
   permission for your terminal. Do not run it while you play.
 - `tests/d3dred.c` is a minimal D3D11 window: `x86_64-w64-mingw32-gcc tests/d3dred.c -o d3dred.exe -ld3d11 -ldxgi -ldxguid -mwindows`.
+- `tests/d3d12green.c` (clear only) and `tests/d3d12tri.c` (HLSL compiled at run time, one triangle) are minimal D3D12
+  windows; each prints every call's HRESULT and the frame count after 20 s:
+  `x86_64-w64-mingw32-gcc tests/d3d12tri.c -o d3d12tri.exe -ld3d12 -ldxgi -ldxguid -ld3dcompiler -mwindows`.
 
 ## License
 
