@@ -11,23 +11,27 @@
          {
 --- a/dlls/win32u/sysparams.c
 +++ b/dlls/win32u/sysparams.c
-@@ -1758,7 +1758,15 @@
+@@ -1758,8 +1758,19 @@
  
      if ((subkey = reg_create_ascii_key( hkey, devpropkey_gpu_luidA, 0, NULL )))
      {
 -        if (query_reg_value( subkey, NULL, value, sizeof(buffer) ) != sizeof(LUID))
 +        /* cuvee: use the Vulkan driver's LUID when it has one. On macOS that is MoltenVK's big-endian Metal
 +         * registryID, the same LUID DXMT reports, so a program that reads the adapter LUID through DXMT's dxgi
-+         * (3DMark's interface) finds the same adapter through wine's dxgi (Time Spy, in d3d12). */
++         * (3DMark's interface) finds the same adapter through wine's dxgi (Time Spy, in d3d12).
++         * Its top bit is cleared: Windows LUIDs are small, and 3DMark parses ours as a signed 64-bit
++         * number (it hung after Steel Nomad); dxgi's EnumAdapterByLuid still accepts DXMT's form. */
 +        if (vulkan_gpu && vulkan_gpu->luid_valid)
-+        {
+         {
 +            gpu->luid = vulkan_gpu->luid;
++            gpu->luid.HighPart &= 0x7fffffff;
 +            TRACE("vulkan luid %08x%08x\n", gpu->luid.HighPart, gpu->luid.LowPart );
 +        }
 +        else if (query_reg_value( subkey, NULL, value, sizeof(buffer) ) != sizeof(LUID))
-         {
++        {
              NtAllocateLocallyUniqueId( &gpu->luid );
              TRACE("allocated luid %08x%08x\n", gpu->luid.HighPart, gpu->luid.LowPart );
+         }
 --- a/dlls/win32u/win32u_private.h
 +++ b/dlls/win32u/win32u_private.h
 @@ -203,6 +203,8 @@
@@ -39,3 +43,17 @@
  };
  
  extern BOOL get_vulkan_gpus( struct list *gpus );
+--- a/dlls/dxgi/factory.c
++++ b/dlls/dxgi/factory.c
+@@ -418,8 +418,10 @@
+             continue;
+         }
+ 
++        /* cuvee: also accept the LUID with its top bit set, the form DXMT's dxgi reports (see win32u). */
+         if (desc.AdapterLuid.LowPart == luid.LowPart
+-                && desc.AdapterLuid.HighPart == luid.HighPart)
++                && (desc.AdapterLuid.HighPart == luid.HighPart
++                || desc.AdapterLuid.HighPart == (luid.HighPart & 0x7fffffff)))
+         {
+             hr = IDXGIAdapter1_QueryInterface(adapter1, iid, adapter);
+             IDXGIAdapter1_Release(adapter1);

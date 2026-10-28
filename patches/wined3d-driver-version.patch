@@ -1,0 +1,14 @@
+--- a/dlls/wined3d/directx.c
++++ b/dlls/wined3d/directx.c
+@@ -753,7 +753,10 @@
+ 
+     memset(&os_version, 0, sizeof(os_version));
+     os_version.dwOSVersionInfoSize = sizeof(os_version);
+-    if (!GetVersionExW(&os_version))
++    /* cuvee: the real version, not GetVersionExW's: a program without a Windows 10 manifest gets 6.2 there,
++     * and a Windows 8 driver version (9.x) tells it the GPU has no Direct3D 12 driver (3DMark's dxr_info.exe
++     * then marks every DX12 test unsupported). A Windows driver's version does not depend on the caller. */
++    if (RtlGetVersion((RTL_OSVERSIONINFOEXW *)&os_version))
+     {
+         ERR("Failed to get OS version, reporting 2000/XP.\n");
+         driver_os_version = 6;

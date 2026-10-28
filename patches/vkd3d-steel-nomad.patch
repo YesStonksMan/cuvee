@@ -1,0 +1,154 @@
+--- a/libs/vkd3d/libs/vkd3d/device.c
++++ b/libs/vkd3d/libs/vkd3d/device.c
+@@ -4633,26 +4633,111 @@
+ 
+     return return_interface(&object->ID3D12Resource2_iface, &IID_ID3D12Resource2, iid, resource);
+ }
++
++/* Shared fences, within one process only: the handle is an unnamed event that
++ * stands for the fence, OpenSharedHandle() maps it back. Cross-process sharing
++ * would need external semaphores, which MoltenVK lacks.
++ * ponytail: fixed table holding a reference per handle, the fence lives until
++ * its handle value is reused by another CreateSharedHandle(). */
++static struct
++{
++    HANDLE handle;
++    ID3D12Fence *fence;
++} shared_fences[64];
++static SRWLOCK shared_fences_lock = SRWLOCK_INIT;
+ 
+ static HRESULT STDMETHODCALLTYPE d3d12_device_CreateSharedHandle(ID3D12Device9 *iface,
+         ID3D12DeviceChild *object, const SECURITY_ATTRIBUTES *attributes, DWORD access,
+         const WCHAR *name, HANDLE *handle)
+ {
+     struct d3d12_device *device = impl_from_ID3D12Device9(iface);
++    ID3D12Fence *fence, *old = NULL;
++    HANDLE event;
++    size_t i, slot = ARRAY_SIZE(shared_fences);
+ 
+-    FIXME("iface %p, object %p, attributes %p, access %#x, name %s, handle %p stub!\n",
++    TRACE("iface %p, object %p, attributes %p, access %#x, name %s, handle %p.\n",
+             iface, object, attributes, (uint32_t)access, debugstr_w(name, device->wchar_size), handle);
+ 
+-    return E_NOTIMPL;
++    if (!object || !handle)
++        return E_INVALIDARG;
++    if (FAILED(ID3D12DeviceChild_QueryInterface(object, &IID_ID3D12Fence, (void **)&fence)))
++    {
++        FIXME("Sharing objects other than fences is not implemented.\n");
++        return E_NOTIMPL;
++    }
++    if (!(event = CreateEventW(NULL, FALSE, FALSE, NULL)))
++    {
++        ID3D12Fence_Release(fence);
++        return E_OUTOFMEMORY;
++    }
++
++    AcquireSRWLockExclusive(&shared_fences_lock);
++    for (i = 0; i < ARRAY_SIZE(shared_fences); ++i)
++    {
++        if (shared_fences[i].handle == event)
++        {
++            slot = i;
++            break;
++        }
++        if (!shared_fences[i].fence && slot == ARRAY_SIZE(shared_fences))
++            slot = i;
++    }
++    if (slot < ARRAY_SIZE(shared_fences))
++    {
++        old = shared_fences[slot].fence;
++        shared_fences[slot].handle = event;
++        shared_fences[slot].fence = fence;
++    }
++    ReleaseSRWLockExclusive(&shared_fences_lock);
++
++    if (old)
++        ID3D12Fence_Release(old);
++    if (slot == ARRAY_SIZE(shared_fences))
++    {
++        ERR("Too many shared fences.\n");
++        CloseHandle(event);
++        ID3D12Fence_Release(fence);
++        return E_OUTOFMEMORY;
++    }
++
++    *handle = event;
++    return S_OK;
+ }
+ 
+ static HRESULT STDMETHODCALLTYPE d3d12_device_OpenSharedHandle(ID3D12Device9 *iface,
+         HANDLE handle, REFIID riid, void **object)
+ {
+-    FIXME("iface %p, handle %p, riid %s, object %p stub!\n",
++    ID3D12Fence *fence = NULL;
++    HRESULT hr;
++    size_t i;
++
++    TRACE("iface %p, handle %p, riid %s, object %p.\n",
+             iface, handle, debugstr_guid(riid), object);
+ 
+-    return E_NOTIMPL;
++    if (!object)
++        return E_INVALIDARG;
++    *object = NULL;
++
++    AcquireSRWLockShared(&shared_fences_lock);
++    for (i = 0; i < ARRAY_SIZE(shared_fences); ++i)
++    {
++        if (shared_fences[i].fence && shared_fences[i].handle == handle)
++        {
++            fence = shared_fences[i].fence;
++            ID3D12Fence_AddRef(fence);
++            break;
++        }
++    }
++    ReleaseSRWLockShared(&shared_fences_lock);
++
++    if (!fence)
++    {
++        FIXME("Handle %p is not a shared fence of this process.\n", handle);
++        return E_NOTIMPL;
++    }
++    hr = ID3D12Fence_QueryInterface(fence, riid, object);
++    ID3D12Fence_Release(fence);
++    return hr;
+ }
+ 
+ static HRESULT STDMETHODCALLTYPE d3d12_device_OpenSharedHandleByName(ID3D12Device9 *iface,
+--- a/libs/vkd3d/libs/vkd3d/resource.c
++++ b/libs/vkd3d/libs/vkd3d/resource.c
+@@ -1956,16 +1956,12 @@
+         }
+     }
+ 
++    /* Only buffers get here, and Windows ignores a buffer's initial state
++     * (3DMark Steel Nomad creates readback buffers in another state). */
+     if (heap_properties->Type == D3D12_HEAP_TYPE_UPLOAD && initial_state != D3D12_RESOURCE_STATE_GENERIC_READ)
+-    {
+-        WARN("For D3D12_HEAP_TYPE_UPLOAD the state must be D3D12_RESOURCE_STATE_GENERIC_READ.\n");
+-        return false;
+-    }
++        WARN("For D3D12_HEAP_TYPE_UPLOAD the state should be D3D12_RESOURCE_STATE_GENERIC_READ.\n");
+     if (heap_properties->Type == D3D12_HEAP_TYPE_READBACK && initial_state != D3D12_RESOURCE_STATE_COPY_DEST)
+-    {
+-        WARN("For D3D12_HEAP_TYPE_READBACK the state must be D3D12_RESOURCE_STATE_COPY_DEST.\n");
+-        return false;
+-    }
++        WARN("For D3D12_HEAP_TYPE_READBACK the state should be D3D12_RESOURCE_STATE_COPY_DEST.\n");
+ 
+     return true;
+ }
+@@ -3131,6 +3127,12 @@
+         view_desc.subresourceRange.levelCount = desc->miplevel_count;
+         view_desc.subresourceRange.baseArrayLayer = desc->layer_idx;
+         view_desc.subresourceRange.layerCount = desc->layer_count;
++        /* A non-array view of an array texture sees one layer (one cube): Vulkan
++         * requires it, and Metal asserts (3DMark Steel Nomad, Texture2D views). */
++        if (desc->view_type == VK_IMAGE_VIEW_TYPE_1D || desc->view_type == VK_IMAGE_VIEW_TYPE_2D)
++            view_desc.subresourceRange.layerCount = 1;
++        else if (desc->view_type == VK_IMAGE_VIEW_TYPE_CUBE)
++            view_desc.subresourceRange.layerCount = 6;
+ 
+         usage_desc.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
+         usage_desc.pNext = NULL;
