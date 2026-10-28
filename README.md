@@ -75,7 +75,10 @@ All of them are in `patches/` and are applied by `build-wine.sh` on top of the p
   `graphics dxmt` loads DXMT's `d3d11`/`dxgi`/`d3d10core` instead of wined3d's. Wine's `d3d12` (vkd3d) does not
   work with DXMT's `dxgi`, so a program whose `.exe` imports `d3d12.dll` but not `d3d11.dll` (normal or delay-load
   imports) skips `WINEDLLPATH_PREPEND` and gets Wine's own `dxgi`; every other program keeps DXMT. A game that imports
-  both (many Unreal Engine games) stays on DXMT and falls back to Direct3D 11 if it can. 3DMark's adapter probes
+  both (many Unreal Engine games) stays on DXMT and falls back to Direct3D 11 if it can. Most games load
+  `d3d12.dll` at run time, so a program started with a Direct3D 12 switch (`-dx12` or `-d3d12` for Unreal,
+  `-force-d3d12` for Unity, e.g. in Steam's launch options) also gets Wine's `dxgi`. Unity games still fall back to
+  Direct3D 11 there: Unity creates a D3D11On12 device, which Wine does not implement (PEAK). 3DMark's adapter probes
   `adapter_info.exe` and `dxr_info.exe` also get Wine's `dxgi`, so the LUID they hand to the DX12 tests is the one
   those tests find.
 
