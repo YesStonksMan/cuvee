@@ -25,7 +25,7 @@ Tested on an Apple Silicon Mac with macOS 27, through Rosetta 2.
 | Works | Not yet |
 | --- | --- |
 | Steam: login, store, library, Play button | 3DMark Time Spy (DX12): black screen, MoltenVK limits |
-| DirectX 12 through vkd3d + MoltenVK: 3DMark Steel Nomad, started from 3DMark, scores 265 (`graphics dxmt` bottle; 3DMark's native Metal version: ~2,990 on the same Mac) | |
+| DirectX 12 through VKD3D-Proton + DXVK's dxgi on VKD3D-Proton-MacOS's MoltenVK (`graphics dxmt` bottle, after `build-vkd3d-proton.sh`): 3DMark Steel Nomad from 3DMark scores 2,372 (3DMark's native Metal version: ~2,990 on the same Mac; Wine's own vkd3d: 265). PEAK with `-force-d3d12` runs Direct3D 12 at feature level 12_1 | |
 | Steam overlay FPS counter | DXVK (wined3d is used for D3D10/11) |
 | D3D10/11 games through wined3d + MoltenVK (Kenshi, Brawlhalla tested) | Games with kernel anti-cheat |
 | D3D10/11 on Metal through DXMT (Kenshi in game, 2560×1440); MetalFX upscaling not measured yet | Ubisoft Connect: installs, window stays white |
@@ -80,7 +80,12 @@ All of them are in `patches/` and are applied by `build-wine.sh` on top of the p
   `-force-d3d12` for Unity, e.g. in Steam's launch options) also gets Wine's `dxgi`. Unity games still fall back to
   Direct3D 11 there: Unity creates a D3D11On12 device, which Wine does not implement (PEAK). 3DMark's adapter probes
   `adapter_info.exe` and `dxr_info.exe` also get Wine's `dxgi`, so the LUID they hand to the DX12 tests is the one
-  those tests find.
+  those tests find. When `WINEDLLPATH_PREPEND_D3D12` is set, these Direct3D 12 programs get its directories instead
+  of Wine's own DLLs: `cuvee` points it at VKD3D-Proton (see below), which has DXVK's D3D11On12 too.
+- **`vkd3d-proton/in-process-shared-fence.patch`** (VKD3D-Proton, applied by `build-vkd3d-proton.sh`): VKD3D-Proton
+  shares a fence through `VK_KHR_external_semaphore_win32`, which MoltenVK lacks, so `CreateSharedHandle` failed
+  (3DMark: `0x887a0001`). A fence shared inside one process now gets an event handle as a token, resolved by
+  `OpenSharedHandle`; sharing across processes still needs the extension.
 
 `cuvee` also sets `WINE_SIMULATE_WRITECOPY=1` for Battle.net bottles (its CEF renderer crashes in a loop without it)
 and passes Windows paths to `msiexec` (Wine's msiexec crashes on a raw Unix path).
@@ -107,6 +112,7 @@ cd ~/.cuvee
 ./fetch-sources.sh    # CrossOver 26.3 sources, GNU nettle, DXMT, Wine Gecko; SHA-256 checked
 ./build-deps.sh       # x86_64 gmp, nettle, gnutls, freetype
 ./build-wine.sh       # Wine + patches -> dist/
+./build-vkd3d-proton.sh   # optional: Direct3D 12 for dxmt bottles -> dist/lib/vkd3d-proton (llvm-mingw, meson, glslang)
 ./cuvee install       # copy dist/ and the CLI to ~/Library/Application Support/Cuvee/runtime
 launcher/build.sh     # optional: /Applications/Cuvee.app
 alias cuvee=~/.cuvee/cuvee   # put this in ~/.zshrc to type `cuvee` anywhere
@@ -156,10 +162,16 @@ arguments go in `CUVEE_STEAM_ARGS`. The app logs to `~/Library/Logs/Cuvee.log`.
 Tips:
 
 - wined3d picks its Vulkan renderer for D3D10/11 when MoltenVK is present; `graphics opengl` forces OpenGL.
-- In a `graphics dxmt` bottle, `cuvee` turns on MoltenVK's Metal argument buffers
-  (`MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS=1`): there MoltenVK only serves Direct3D 12 and Vulkan programs, and without
-  them Metal allows 128 textures per shader (Steel Nomad needs more). Vulkan bottles keep them off: wined3d's
-  geometry shaders break with them. Set the variable to 0 yourself to turn them off.
+- In a `graphics dxmt` bottle with `dist/lib/vkd3d-proton`, Direct3D 12 programs run VKD3D-Proton (`d3d12`,
+  `d3d12core`) with DXVK's `dxgi`/`d3d11`/`d3d10core`, and the whole bottle uses VKD3D-Proton-MacOS's MoltenVK 1.4
+  (`DYLD_LIBRARY_PATH`, ahead of win32u's own rpath) so win32u and DXVK see the same GPU LUID, which 3DMark matches.
+  Direct3D 10/11 programs keep DXMT. A game that picks Direct3D 12 at run time needs its switch (`-dx12`, `-d3d12`,
+  `-force-d3d12`) in Steam's launch options. `build-vkd3d-proton.sh` builds `d3d12`/`d3d12core` from VKD3D-Proton-MacOS
+  v4.5's pinned sources and takes DXVK's DLLs, the MoltenVK build and Apple's `libmetalirconverter.dylib` (Metal
+  Shader Converter runtime, Apple's license) from its v4.5 release, SHA-256 checked; see `dist/lib/vkd3d-proton/PROVENANCE.txt`.
+- Without `dist/lib/vkd3d-proton`, a dxmt bottle runs Direct3D 12 on Wine's vkd3d and turns on MoltenVK's Metal argument
+  buffers (`MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS=1`): without them Metal allows 128 textures per shader (Steel Nomad
+  needs more). Vulkan bottles keep them off: wined3d's geometry shaders break with them.
 - FSR is a setting inside each game. MetalFX with `graphics dxmt` renders fewer pixels and scales the image up
   (factor 2 by default; `d3d11.metalSpatialUpscaleFactor` in a `dxmt.conf` changes it, see DXMT's documentation).
 - `tests/steam-fps-test.sh LABEL DIST BOTTLE` launches Steam and Brawlhalla (must be installed), captures the

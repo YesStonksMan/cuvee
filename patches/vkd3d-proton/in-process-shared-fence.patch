@@ -1,0 +1,80 @@
+diff --git a/libs/vkd3d/device.c b/libs/vkd3d/device.c
+index f6175393..e349d207 100644
+--- a/libs/vkd3d/device.c
++++ b/libs/vkd3d/device.c
+@@ -6699,6 +6699,48 @@ static HRESULT STDMETHODCALLTYPE d3d12_device_CreateReservedResource(d3d12_devic
+             optimized_clear_value, NULL, iid, resource);
+ }
+ 
++#ifdef _WIN32
++/* cuvee: without VK_KHR_external_semaphore_win32 (MoltenVK) a shared fence is a regular one, and
++ * CreateSharedHandle failed on it. 3DMark shares fences inside its own process only: hand out an event
++ * handle as a token for the fence and resolve it in OpenSharedHandle.
++ * ponytail: 64 slots, never freed (a fence shared once lives as long as the process); cross-process
++ * sharing still needs the Vulkan extension. */
++static struct { HANDLE handle; ID3D12Fence *fence; } in_process_fences[64];
++static SRWLOCK in_process_fence_lock = SRWLOCK_INIT;
++
++static HRESULT in_process_fence_share(ID3D12Fence *fence, HANDLE *handle)
++{
++    HRESULT hr = E_OUTOFMEMORY;
++    unsigned int i;
++
++    AcquireSRWLockExclusive(&in_process_fence_lock);
++    for (i = 0; i < ARRAY_SIZE(in_process_fences); ++i)
++    {
++        if (in_process_fences[i].handle) continue;
++        if (!(*handle = CreateEventW(NULL, TRUE, FALSE, NULL))) break;
++        ID3D12Fence_AddRef(fence);
++        in_process_fences[i].handle = *handle;
++        in_process_fences[i].fence = fence;
++        hr = S_OK;
++        break;
++    }
++    ReleaseSRWLockExclusive(&in_process_fence_lock);
++    return hr;
++}
++
++static ID3D12Fence *in_process_fence_open(HANDLE handle)
++{
++    ID3D12Fence *fence = NULL;
++    unsigned int i;
++
++    AcquireSRWLockShared(&in_process_fence_lock);
++    for (i = 0; i < ARRAY_SIZE(in_process_fences); ++i)
++        if (in_process_fences[i].handle == handle) fence = in_process_fences[i].fence;
++    ReleaseSRWLockShared(&in_process_fence_lock);
++    return fence;
++}
++#endif
++
+ static HRESULT STDMETHODCALLTYPE d3d12_device_CreateSharedHandle(d3d12_device_iface *iface,
+         ID3D12DeviceChild *object, const SECURITY_ATTRIBUTES *attributes, DWORD access,
+         const WCHAR *name, HANDLE *handle)
+@@ -6812,8 +6854,12 @@ static HRESULT STDMETHODCALLTYPE d3d12_device_CreateSharedHandle(d3d12_device_if
+ 
+         if (!is_shared_ID3D12Fence(fence_iface))
+         {
++            HRESULT hr = DXGI_ERROR_INVALID_CALL;
++
++            if (((struct d3d12_fence *)impl_from_ID3D12Fence1((ID3D12Fence1 *)fence_iface))->d3d12_flags & D3D12_FENCE_FLAG_SHARED)
++                hr = in_process_fence_share(fence_iface, handle);
+             ID3D12Fence_Release(fence_iface);
+-            return DXGI_ERROR_INVALID_CALL;
++            return hr;
+         }
+ 
+         fence = shared_impl_from_ID3D12Fence(fence_iface);
+@@ -6976,8 +7022,12 @@ static HRESULT STDMETHODCALLTYPE d3d12_device_OpenSharedHandle(d3d12_device_ifac
+     {
+         VkImportSemaphoreWin32HandleInfoKHR import_info;
+         struct d3d12_shared_fence *fence;
++        ID3D12Fence *local_fence;
+         VkResult vr;
+ 
++        if ((local_fence = in_process_fence_open(handle)))
++            return ID3D12Fence_QueryInterface(local_fence, riid, object);
++
+         hr = d3d12_shared_fence_create(device, 0, D3D12_FENCE_FLAG_SHARED, &fence);
+ 
+         if (FAILED(hr))

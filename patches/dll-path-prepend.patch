@@ -20,25 +20,40 @@
          MESSAGE( "wine: failed to start %s: %x\n", debugstr_us(&params->ImagePathName), status );
 --- a/dlls/ntdll/unix/loader.c
 +++ b/dlls/ntdll/unix/loader.c
-@@ -384,16 +384,30 @@
+@@ -383,17 +383,45 @@
+     if (path_len > dll_path_maxlen)
          dll_path_maxlen = path_len;
  }
- 
++
 +/* cuvee: the WINEDLLPATH_PREPEND entries of dll_paths, NULL-terminated (see skip_dll_path_prepend) */
 +static const char **prepend_paths;
-+
++/* cuvee: WINEDLLPATH_PREPEND_D3D12, the directories that replace them in a Direct3D 12 process */
++static const char **d3d12_paths;
+ 
  static void set_dll_path(void)
  {
      char *p, *path = getenv( "WINEDLLPATH" );
 +    /* cuvee: directories searched before wine's own, e.g. DXMT's d3d11/dxgi for one bottle */
-+    char *first = getenv( "WINEDLLPATH_PREPEND" );
++    char *first = getenv( "WINEDLLPATH_PREPEND" ), *d3d12 = getenv( "WINEDLLPATH_PREPEND_D3D12" );
      int i, count = 0;
  
      if (path) for (p = path, count = 1; *p; p++) if (*p == ':') count++;
 +    if (first && *first) for (p = first, count++; *p; p++) if (*p == ':') count++;
++    if (d3d12 && *d3d12) for (p = d3d12, count++; *p; p++) if (*p == ':') count++;
  
      dll_paths = malloc( (count + 2) * sizeof(*dll_paths) );
 +    prepend_paths = calloc( count + 1, sizeof(*prepend_paths) );
++    d3d12_paths = calloc( count + 1, sizeof(*d3d12_paths) );
++    if (d3d12 && *d3d12)
++    {
++        d3d12 = strdup( d3d12 );
++        for (p = strtok( d3d12, ":" ), i = 0; p; p = strtok( NULL, ":" ), i++)
++        {
++            d3d12_paths[i] = strdup( p );
++            dll_path_maxlen = max( dll_path_maxlen, strlen(p) );
++        }
++        free( d3d12 );
++    }
      count = 0;
  
 +    if (first && *first)
@@ -51,7 +66,7 @@
      if (!build_dir) dll_paths[count++] = dll_dir;
  
      if (path)
-@@ -1779,13 +1793,140 @@
+@@ -1779,13 +1807,148 @@
      free( unix_name );
      free( true_nt_name.Buffer );
      return status;
@@ -124,14 +139,14 @@
 +    }
 +#undef NAME_IS_DLL
 +    return FALSE;
- }
- 
++}
++
 +/* cuvee: does the image's path contain str, a lowercase ASCII string, ignoring case */
 +static BOOL image_path_has( const UNICODE_STRING *nt_name, const char *str )
 +{
 +    USHORT len = nt_name->Length / sizeof(WCHAR), n = strlen( str ), i, j;
 +    WCHAR c;
- 
++
 +    for (i = 0; i + n <= len; i++)
 +    {
 +        for (j = 0; j < n; j++)
@@ -146,7 +161,8 @@
 +
 +/* cuvee: DXMT (WINEDLLPATH_PREPEND) replaces dxgi.dll, and wine's d3d12 cannot work with DXMT's dxgi
 + * (D3D12CreateDevice fails with E_NOINTERFACE). A program that imports d3d12.dll but not d3d11.dll only
-+ * speaks Direct3D 12, so it gets wine's own dxgi and vkd3d; everything else keeps DXMT.
++ * speaks Direct3D 12, so it gets the WINEDLLPATH_PREPEND_D3D12 directories instead (VKD3D-Proton with DXVK's
++ * dxgi/d3d11), or wine's own dxgi and vkd3d when there are none; everything else keeps DXMT.
 + * 3DMark's adapter probes adapter_info.exe and dxr_info.exe (dxgi loaded at run time) also get wine's: they
 + * hand the adapter LUID to the D3D12 tests, which look it up through wine's dxgi, and DXMT's LUID has its top
 + * bit set ("Unknown adapter LUID given!", or 3DMark hangs on the result). dxinfo.exe keeps DXMT on purpose:
@@ -181,10 +197,17 @@
 +        if (!prepend_paths[k]) dll_paths[j++] = dll_paths[i];
 +    }
 +    dll_paths[j] = NULL;
-+    TRACE( "%s: Direct3D 12 only, ignoring WINEDLLPATH_PREPEND\n", debugstr_us(nt_name) );
-+}
-+
-+
++    /* VKD3D-Proton's d3d12 with DXVK's dxgi/d3d11 instead of DXMT's, when the bottle has them; room was reserved */
++    for (k = 0; d3d12_paths[k]; k++) ;
++    if (k)
++    {
++        memmove( dll_paths + k, dll_paths, (j + 1) * sizeof(*dll_paths) );
++        memcpy( dll_paths, d3d12_paths, k * sizeof(*dll_paths) );
++    }
++    TRACE( "%s: Direct3D 12, WINEDLLPATH_PREPEND_D3D12 instead of WINEDLLPATH_PREPEND\n", debugstr_us(nt_name) );
+ }
+ 
+ 
  /***********************************************************************
   *           load_main_exe
   */
@@ -193,7 +216,7 @@
  {
      enum loadorder loadorder = get_load_order( nt_name );
      unsigned int status;
-@@ -1793,6 +1934,7 @@
+@@ -1793,6 +1956,7 @@
      USHORT search_machine;
  
      status = open_main_image( nt_name, module, &main_image_info, loadorder, load_machine );
