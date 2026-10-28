@@ -1,24 +1,59 @@
+--- a/dlls/ntdll/unix/env.c
++++ b/dlls/ntdll/unix/env.c
+@@ -1917,7 +1917,7 @@
+     env[env_pos++] = 0;
+ 
+     get_full_path( main_argv[1], curdir, &nt_name );
+-    status = load_main_exe( &nt_name, 0, module );
++    status = load_main_exe( &nt_name, NULL, 0, module );
+     /* fail only if the file contained an explicit path */
+     if (status == STATUS_DLL_NOT_FOUND &&
+         (strpbrk( main_argv[1], "/\\" ) || (main_argv[1][0] && main_argv[1][1] == ':')))
+@@ -2106,7 +2106,7 @@
+     free( env );
+     free( info );
+ 
+-    status = load_main_exe( &nt_name, machine, &module );
++    status = load_main_exe( &nt_name, &params->CommandLine, machine, &module );
+     if (!NT_SUCCESS(status))
+     {
+         MESSAGE( "wine: failed to start %s: %x\n", debugstr_us(&params->ImagePathName), status );
 --- a/dlls/ntdll/unix/loader.c
 +++ b/dlls/ntdll/unix/loader.c
-@@ -384,16 +384,30 @@
+@@ -383,17 +383,45 @@
+     if (path_len > dll_path_maxlen)
          dll_path_maxlen = path_len;
  }
- 
++
 +/* cuvee: the WINEDLLPATH_PREPEND entries of dll_paths, NULL-terminated (see skip_dll_path_prepend) */
 +static const char **prepend_paths;
-+
++/* cuvee: WINEDLLPATH_PREPEND_D3D12, the directories that replace them in a Direct3D 12 process */
++static const char **d3d12_paths;
+ 
  static void set_dll_path(void)
  {
      char *p, *path = getenv( "WINEDLLPATH" );
 +    /* cuvee: directories searched before wine's own, e.g. DXMT's d3d11/dxgi for one bottle */
-+    char *first = getenv( "WINEDLLPATH_PREPEND" );
++    char *first = getenv( "WINEDLLPATH_PREPEND" ), *d3d12 = getenv( "WINEDLLPATH_PREPEND_D3D12" );
      int i, count = 0;
  
      if (path) for (p = path, count = 1; *p; p++) if (*p == ':') count++;
 +    if (first && *first) for (p = first, count++; *p; p++) if (*p == ':') count++;
++    if (d3d12 && *d3d12) for (p = d3d12, count++; *p; p++) if (*p == ':') count++;
  
      dll_paths = malloc( (count + 2) * sizeof(*dll_paths) );
 +    prepend_paths = calloc( count + 1, sizeof(*prepend_paths) );
++    d3d12_paths = calloc( count + 1, sizeof(*d3d12_paths) );
++    if (d3d12 && *d3d12)
++    {
++        d3d12 = strdup( d3d12 );
++        for (p = strtok( d3d12, ":" ), i = 0; p; p = strtok( NULL, ":" ), i++)
++        {
++            d3d12_paths[i] = strdup( p );
++            dll_path_maxlen = max( dll_path_maxlen, strlen(p) );
++        }
++        free( d3d12 );
++    }
      count = 0;
  
 +    if (first && *first)
@@ -31,10 +66,13 @@
      if (!build_dir) dll_paths[count++] = dll_dir;
  
      if (path)
-@@ -1777,6 +1791,118 @@
- }
- 
- 
+@@ -1779,13 +1807,148 @@
+     free( unix_name );
+     free( true_nt_name.Buffer );
+     return status;
++}
++
++
 +/* cuvee: number of readable bytes from rva to the end of its section, 0 if rva is in no readable section */
 +static ULONG image_readable( const IMAGE_NT_HEADERS *nt, ULONG rva )
 +{
@@ -123,18 +161,34 @@
 +
 +/* cuvee: DXMT (WINEDLLPATH_PREPEND) replaces dxgi.dll, and wine's d3d12 cannot work with DXMT's dxgi
 + * (D3D12CreateDevice fails with E_NOINTERFACE). A program that imports d3d12.dll but not d3d11.dll only
-+ * speaks Direct3D 12, so it gets wine's own dxgi and vkd3d; everything else keeps DXMT.
++ * speaks Direct3D 12, so it gets the WINEDLLPATH_PREPEND_D3D12 directories instead (VKD3D-Proton with DXVK's
++ * dxgi/d3d11), or wine's own dxgi and vkd3d when there are none; everything else keeps DXMT.
 + * 3DMark's adapter probes adapter_info.exe and dxr_info.exe (dxgi loaded at run time) also get wine's: they
 + * hand the adapter LUID to the D3D12 tests, which look it up through wine's dxgi, and DXMT's LUID has its top
 + * bit set ("Unknown adapter LUID given!", or 3DMark hangs on the result). dxinfo.exe keeps DXMT on purpose:
-+ * its D3D11 feature level (11_0 here) bars every DX12 test once 3DMark can match its LUID. */
-+static void skip_dll_path_prepend( const char *base, const UNICODE_STRING *nt_name )
++ * its D3D11 feature level (11_0 here) bars every DX12 test once 3DMark can match its LUID.
++ * Most games load d3d12.dll at run time (Unity, Unreal), after dxgi: those get wine's dxgi when started with a
++ * Direct3D 12 switch, -dx12 or -d3d12 (Unreal) or -force-d3d12 (Unity), e.g. in Steam's launch options. */
++static BOOL wants_d3d12( const UNICODE_STRING *cmdline )
++{
++    int i;
++
++    if (cmdline) return image_path_has( cmdline, " -dx12" ) || image_path_has( cmdline, " -d3d12" ) ||
++                        image_path_has( cmdline, " -force-d3d12" );
++    for (i = 2; i < main_argc; i++)  /* first process, started from a Unix command line */
++        if (!strcasecmp( main_argv[i], "-dx12" ) || !strcasecmp( main_argv[i], "-d3d12" ) ||
++            !strcasecmp( main_argv[i], "-force-d3d12" )) return TRUE;
++    return FALSE;
++}
++
++static void skip_dll_path_prepend( const char *base, const UNICODE_STRING *nt_name, const UNICODE_STRING *cmdline )
 +{
 +    unsigned int i, j, k;
 +
 +    if (!prepend_paths || !prepend_paths[0]) return;
 +    if ((!image_imports( base, "d3d12.dll" ) || image_imports( base, "d3d11.dll" ))
-+            && !image_path_has( nt_name, "\\adapter_info.exe" ) && !image_path_has( nt_name, "\\dxr_info.exe" ))
++            && !image_path_has( nt_name, "\\adapter_info.exe" ) && !image_path_has( nt_name, "\\dxr_info.exe" )
++            && !wants_d3d12( cmdline ))
 +        return;
 +
 +    for (i = j = 0; dll_paths[i]; i++)
@@ -143,18 +197,41 @@
 +        if (!prepend_paths[k]) dll_paths[j++] = dll_paths[i];
 +    }
 +    dll_paths[j] = NULL;
-+    TRACE( "%s: Direct3D 12 only, ignoring WINEDLLPATH_PREPEND\n", debugstr_us(nt_name) );
-+}
-+
-+
++    /* VKD3D-Proton's d3d12 with DXVK's dxgi/d3d11 instead of DXMT's, when the bottle has them; room was reserved */
++    for (k = 0; d3d12_paths[k]; k++) ;
++    if (k)
++    {
++        memmove( dll_paths + k, dll_paths, (j + 1) * sizeof(*dll_paths) );
++        memcpy( dll_paths, d3d12_paths, k * sizeof(*dll_paths) );
++    }
++    TRACE( "%s: Direct3D 12, WINEDLLPATH_PREPEND_D3D12 instead of WINEDLLPATH_PREPEND\n", debugstr_us(nt_name) );
+ }
+ 
+ 
  /***********************************************************************
   *           load_main_exe
   */
-@@ -1788,6 +1914,7 @@
+-NTSTATUS load_main_exe( UNICODE_STRING *nt_name, USHORT load_machine, void **module )
++NTSTATUS load_main_exe( UNICODE_STRING *nt_name, const UNICODE_STRING *cmdline, USHORT load_machine, void **module )
+ {
+     enum loadorder loadorder = get_load_order( nt_name );
+     unsigned int status;
+@@ -1793,6 +1956,7 @@
      USHORT search_machine;
  
      status = open_main_image( nt_name, module, &main_image_info, loadorder, load_machine );
-+    if (NT_SUCCESS(status)) skip_dll_path_prepend( *module, nt_name );
++    if (NT_SUCCESS(status)) skip_dll_path_prepend( *module, nt_name, cmdline );
      if (status != STATUS_DLL_NOT_FOUND) return status;
  
      /* if path is in system dir, we can load the builtin even if the file itself doesn't exist */
+--- a/dlls/ntdll/unix/unix_private.h
++++ b/dlls/ntdll/unix/unix_private.h
+@@ -219,7 +219,7 @@
+                               ANSI_STRING *exp_name, USHORT machine, SECTION_IMAGE_INFORMATION *info,
+                               void **module, SIZE_T *size, ULONG_PTR limit_low, ULONG_PTR limit_high, off_t offset );
+ extern BOOL is_builtin_path( const UNICODE_STRING *path, WORD *machine );
+-extern NTSTATUS load_main_exe( UNICODE_STRING *nt_name, USHORT load_machine, void **module );
++extern NTSTATUS load_main_exe( UNICODE_STRING *nt_name, const UNICODE_STRING *cmdline, USHORT load_machine, void **module );
+ extern NTSTATUS load_start_exe( UNICODE_STRING *nt_name, void **module );
+ extern ULONG_PTR redirect_arm64ec_rva( void *module, ULONG_PTR rva, const IMAGE_ARM64EC_METADATA *metadata );
+ extern void start_server( BOOL debug );
