@@ -13,3 +13,7 @@
 /branding/pistes-*.png
 /Portfile.crossover
 .DS_Store
+
+# Local release output
+/release/
+__pycache__/

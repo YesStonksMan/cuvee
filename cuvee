@@ -34,6 +34,8 @@ export WINEDLLPATH="${WINEDLLPATH:-$HERE/dist/lib/wine}"   # lets wine name each
 
 die() { echo "cuvee: $*" >&2; exit 1; }
 [ -x "$WINE" ] || die "wine not built yet ($WINE)"
+DEFAULT_GRAPHICS=vulkan
+if [ ! -f "$HERE/dist/lib/libMoltenVK.dylib" ] && [ -d "$HERE/dist/lib/dxmt" ]; then DEFAULT_GRAPHICS=dxmt; fi
 
 bottle() { # NAME -> sets WINEPREFIX
   [ -n "${1:-}" ] || die "bottle name required"
@@ -61,7 +63,8 @@ set_setting() { # KEY VALUE; locked: the app runs two `cuvee set` at once and ea
 }
 
 apply_settings() { # environment for the bottle's settings and launcher, read at every launch
-  case "$(setting graphics vulkan)" in
+  case "$(setting graphics "$DEFAULT_GRAPHICS")" in
+    vulkan) [ -f "$HERE/dist/lib/libMoltenVK.dylib" ] || die "Vulkan is not included in this edition; choose Metal (DXMT) or OpenGL in the bottle settings" ;;
     opengl) export WINE_D3D_CONFIG="renderer=gl" ;;
     dxmt)   [ -d "$HERE/dist/lib/dxmt" ] || die "DXMT is not installed in this build (see README)"
             export WINEDLLPATH_PREPEND="$HERE/dist/lib/dxmt"   # DXMT's d3d11/dxgi/d3d10core/nvngx before wined3d's
@@ -88,13 +91,13 @@ set_cmd() { # NAME KEY VALUE
     graphics=vulkan|graphics=opengl|graphics=dxmt|metalfx=on|metalfx=off) set_setting "$2" "$3" ;;
     *) die "usage: cuvee set NAME graphics vulkan|opengl|dxmt | metalfx on|off" ;;
   esac
-  if [ "$2" = metalfx ] && [ "$3" = on ] && [ "$(setting graphics vulkan)" != dxmt ]; then echo "note: MetalFX only works with graphics dxmt"; fi
+  if [ "$2" = metalfx ] && [ "$3" = on ] && [ "$(setting graphics "$DEFAULT_GRAPHICS")" != dxmt ]; then echo "note: MetalFX only works with graphics dxmt"; fi
   echo "$1: $2=$3"
 }
 
 settings_cmd() {
   need_bottle "$1"
-  echo "graphics=$(setting graphics vulkan)"
+  echo "graphics=$(setting graphics "$DEFAULT_GRAPHICS")"
   echo "metalfx=$(setting metalfx off)"
   [ -n "$(setting launcher)" ] && echo "launcher=$(setting launcher)"
   return 0
