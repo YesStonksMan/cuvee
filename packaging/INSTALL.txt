@@ -1,0 +1,45 @@
+Cuvee 1.1 — preview / préversion
+
+FRANÇAIS
+Mac Apple Silicon (M1 ou plus récent), macOS 15 minimum, Rosetta 2.
+Ouvrir le fichier .pkg et suivre l'installateur macOS. Autre méthode : dans le .dmg,
+glisser Cuvee dans Applications puis éjecter le disque. Ouvrir Cuvee depuis Applications.
+Aucun Homebrew, Xcode ou terminal nécessaire pour utiliser l'app.
+Si Rosetta 2 est absent, macOS peut proposer son installation au premier lancement
+ d'un programme Windows ; accepter sa licence dans la fenêtre d'Apple.
+L'app est signée ad hoc, sans certificat Developer ID ni notarisation Apple.
+macOS peut la bloquer : après une tentative d'ouverture, autoriser cette app dans
+Réglages Système > Confidentialité et sécurité > Ouvrir quand même, seulement
+si vous faites confiance à cette préversion. Ne désactivez pas Gatekeeper.
+
+Cette édition inclut Wine, Metal (DXMT) pour DirectX 10/11, OpenGL et Wine Gecko.
+Vulkan, MoltenVK et DirectX 12 ne sont pas inclus. Les jeux avec anti-triche
+peuvent être incompatibles. Les achats et comptes Steam/Epic/etc. restent personnels.
+Installer un lanceur depuis Cuvee, puis se connecter avec son propre compte.
+Les jeux, bouteilles et téléchargements sont propres à chaque utilisateur dans
+~/Library/Application Support/Cuvee. Aucun compte ou jeu de l'auteur n'est inclus.
+Quitter Cuvee et les jeux avant une mise à jour. Supprimer Cuvee.app désinstalle
+l'app ; les jeux et sauvegardes restent dans ce dossier utilisateur.
+
+ENGLISH
+Apple Silicon Mac (M1 or later), macOS 15 or later, Rosetta 2 required.
+Open the .pkg and follow the macOS Installer. Alternatively, drag Cuvee from the
+.dmg to Applications, eject the disk, then open Cuvee from Applications.
+No Homebrew, Xcode or terminal is needed to use the app. macOS may offer to install
+Rosetta 2 when you first start a Windows program; accept Apple's license in its dialog.
+This preview is ad-hoc signed, without Developer ID or Apple notarization.
+If macOS blocks it, after trying to open it use System Settings > Privacy & Security >
+Open Anyway only if you trust this preview. Do not disable Gatekeeper.
+Includes Wine, Metal (DXMT) for DirectX 10/11, OpenGL and Wine Gecko.
+Vulkan, MoltenVK and DirectX 12 are not included. Anti-cheat games may be incompatible.
+Install a launcher in Cuvee and sign in with your own account. Games, bottles and
+downloads are stored separately per user in ~/Library/Application Support/Cuvee.
+Quit Cuvee and games before updating. Deleting Cuvee.app leaves games and saves intact.
+
+Sources and licenses / Sources et licences
+Licenses and notices: Cuvee.app/Contents/Resources/Licenses and THIRD-PARTY-NOTICES.txt.
+Corresponding source trees, build scripts and patches accompany each release in
+Cuvee-VERSION-sources.tar.gz. Keep this archive available alongside the installer.
+This free software may be modified and rebuilt; no DRM prevents replacement of its
+libraries. Changing an app bundle invalidates its code signature (re-sign your build).
+Project: https://github.com/YesStonksMan/cuvee

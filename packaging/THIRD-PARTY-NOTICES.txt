@@ -1,0 +1,22 @@
+Cuvee distribution — third-party components
+
+Cuvee: LGPL-2.1-or-later. https://github.com/YesStonksMan/cuvee
+Wine 11.0 from CodeWeavers' public CrossOver 26.3 source release: LGPL-2.1-or-later
+and component licenses in the Wine source. https://www.codeweavers.com/crossover/source
+GMP, Nettle 3.10, GnuTLS, FreeType and their bundled subprojects keep their licenses.
+Their complete source trees and COPYING/LICENSE files accompany this release.
+DXMT 0.80: MIT, with component notices included in its source and Licenses/DXMT.
+https://github.com/3Shain/dxmt/tree/v0.80
+Wine Gecko 2.47.4: Mozilla and component licenses (see Licenses/Gecko-license.html).
+https://dl.winehq.org/wine/wine-gecko/2.47.4/
+
+Exact license texts are under Licenses/. Corresponding sources are supplied with the
+installer as Cuvee-VERSION-sources.tar.gz, including the patched Wine tree, dependency
+sources, DXMT with its pinned submodules, Gecko's original source archive, and Cuvee's
+build scripts and patches. See README.md for rebuilding; replace the matching source
+trees before building to reproduce the packaged revision.
+
+No closed CrossOver modules, CrossOver-copied MoltenVK, Apple's Metal Shader Converter,
+VKD3D-Proton binary bundle, user bottles, downloaded game installers, or accounts are
+included. CodeWeavers, Wine, Valve and other names remain their owners' trademarks.
+Cuvee is independent and is not endorsed by those organizations.

@@ -4,7 +4,11 @@ import AppKit
 import Foundation
 
 let support = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Application Support/Cuvee")
-let cli = support.appending(path: "runtime/cuvee")
+// Release apps carry their own engine. Developer builds keep the existing installed runtime.
+let cli = Bundle.main.resourceURL.map { $0.appending(path: "runtime/cuvee") }
+    .flatMap { FileManager.default.isExecutableFile(atPath: $0.path) ? $0 : nil }
+    ?? support.appending(path: "runtime/cuvee")
+let hasMoltenVK = FileManager.default.fileExists(atPath: cli.deletingLastPathComponent().appending(path: "dist/lib/libMoltenVK.dylib").path)
 let bottlesDir = support.appending(path: "Bottles")
 let logFile = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Logs/Cuvee.log")
 private let hiddenApps: Set<String> = ["228980"]   // Steamworks Common Redistributables
@@ -26,6 +30,8 @@ struct LauncherKind: Identifiable, Hashable {
 enum Graphics: String, CaseIterable, Identifiable {
     case vulkan, opengl, dxmt
     var id: String { rawValue }
+    static var available: [Graphics] { hasMoltenVK ? allCases : [.dxmt, .opengl] }
+    static var fallback: Graphics { hasMoltenVK ? .vulkan : .dxmt }
     var label: String {
         switch self {
         case .vulkan: "Vulkan (MoltenVK)"
@@ -104,7 +110,7 @@ enum Library {
             tiles.append(Tile(id: "\(name)/open", name: launcher == "steam" ? "Steam" : name, art: art, action: .open(bottle: name)))
         }
         if hasSteam { tiles += games(bottle: name, steamDir: steamDir) }
-        return Bottle(name: name, launcher: launcher, graphics: Graphics(rawValue: conf["graphics"] ?? "") ?? .vulkan,
+        return Bottle(name: name, launcher: launcher, graphics: Graphics(rawValue: conf["graphics"] ?? "") ?? .fallback,
                       metalFX: conf["metalfx"] == "on", tiles: tiles)
     }
 
@@ -204,6 +210,7 @@ enum Library {
 /// Runs the installed `cuvee` CLI, output appended to ~/Library/Logs/Cuvee.log.
 enum CLI {
     static func run(_ args: [String], onExit: @escaping @Sendable (Int32) -> Void) throws {
+        try FileManager.default.createDirectory(at: logFile.deletingLastPathComponent(), withIntermediateDirectories: true)
         if !FileManager.default.fileExists(atPath: logFile.path) {
             FileManager.default.createFile(atPath: logFile.path, contents: nil)
         }

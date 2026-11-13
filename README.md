@@ -1,6 +1,6 @@
 # Cuvee
 
-Play your Windows games on a Mac (Steam, Epic Games, Battle.net…) with a Wine you build yourself.
+Play your Windows games on a Mac (Steam, Epic Games, Battle.net…) with a Wine built from public source.
 
 Cuvee builds the Wine that ships inside CrossOver 26.3 (Wine 11.0) from the source code CodeWeavers publishes,
 adds a few small patches so the game launchers work, and gives you:
@@ -17,6 +17,34 @@ adds a few small patches so the game launchers work, and gives you:
 
 *En français : Cuvee compile le Wine de CrossOver 26.3 depuis la source publique de CodeWeavers, ajoute des correctifs
 pour les lanceurs de jeux (Steam, Epic, Battle.net…), et fournit une commande `cuvee` et une app pour gérer les bouteilles. Projet indépendant, sans lien avec CodeWeavers.*
+
+## Install on another Mac
+
+Download the `.pkg` installer from [Releases](https://github.com/YesStonksMan/cuvee/releases).
+Open it and follow macOS Installer; Cuvee is installed in Applications. A `.dmg` is also
+provided if you prefer to drag Cuvee into Applications. No Xcode, Homebrew or terminal is
+needed to use this edition.
+
+- **Apple Silicon (M1 or later), macOS 15 or later, Rosetta 2.** macOS may offer to install
+  Rosetta when you first start a Windows program. Intel Macs are not supported by this package.
+- **Preview, ad-hoc signed, not notarized.** macOS may block the download. After trying to
+  open it, use System Settings → Privacy & Security → Open Anyway only if you trust this
+  preview. Do not disable Gatekeeper. A warning-free release needs Developer ID signing
+  and Apple notarization, which are not configured yet.
+- Includes Wine, **Metal (DXMT) for DirectX 10/11**, OpenGL, and Wine Gecko.
+  **Vulkan, MoltenVK and DirectX 12 are not included in the downloadable preview.** The
+  source-build features and benchmarks below include optional engines absent from this package.
+- Open Cuvee, install a launcher, and sign in with **your own account**. The installer
+  contains no games, bottles, credentials or personal downloads. Each user's data lives in
+  `~/Library/Application Support/Cuvee`; updates preserve it. Close games and Cuvee before updating.
+- Licenses are inside `Cuvee.app/Contents/Resources/Licenses`. Each release also supplies a
+  matching `Cuvee-VERSION-sources.tar.gz` archive and SHA-256 checksums.
+
+*En français : télécharger le `.pkg` dans Releases, l'ouvrir, puis lancer Cuvee depuis
+Applications. Mac Apple Silicon, macOS 15 minimum, Rosetta 2. Aucun outil de compilation
+nécessaire. Préversion sans notarisation Apple : macOS peut demander une autorisation.
+Metal (DirectX 10/11) et OpenGL inclus ; Vulkan et DirectX 12 absents de cette édition.
+Installer un lanceur puis utiliser son propre compte. Jeux et sauvegardes restent personnels.*
 
 ## Status
 
@@ -92,14 +120,14 @@ and passes Windows paths to `msiexec` (Wine's msiexec crashes on a raw Unix path
 
 Cuvee contains no code or binary taken from CrossOver's closed-source parts.
 
-## Requirements
+## Build requirements
 
 - Apple Silicon Mac with Rosetta 2 (`softwareupdate --install-rosetta`), Xcode Command Line Tools.
 - [Homebrew](https://brew.sh) and: `brew install bison flex mingw-w64 autoconf automake libtool pkgconf gettext`
 - About 6 GB of disk for sources and build, plus your games.
 - So far the build has only been checked on the author's Mac: if a step fails on a clean machine, please open an issue.
 - MoltenVK, see below.
-- `fetch-sources.sh` also downloads DXMT 0.80 (3Shain/dxmt, LGPL-2.1+) and Wine Gecko 2.47.4 (WineHQ, MPL),
+- `fetch-sources.sh` also downloads DXMT 0.80 (3Shain/dxmt, MIT) and Wine Gecko 2.47.4 (WineHQ, MPL),
   both SHA-256 checked.
 
 ## Build
@@ -126,7 +154,10 @@ The first `cuvee install` then offers to install the game launchers (`cuvee setu
 `Cuvee.app` runs that installed copy, so run `cuvee install` first. Being started from the Finder, it does not see
 shell variables such as `CUVEE_BOTTLES`.
 
-`dist/` bundles gmp, nettle, gnutls and freetype; it is meant for your own Mac, not for redistribution as is.
+`dist/` bundles gmp, nettle, gnutls and freetype. Do not redistribute it as is: its library
+paths can point to the build machine, and it may contain optional personal-use binaries.
+Use the release packager below, which allowlists files, removes those optional engines,
+relocates dependencies, includes licenses and supplies corresponding sources.
 
 ### MoltenVK
 
@@ -138,6 +169,44 @@ wined3d needs MoltenVK (Vulkan on Metal) for Direct3D 10/11. It has to be CodeWe
 - otherwise, build `src/sources/moltenvk` with Xcode and put `libMoltenVK.dylib` in `dist/lib/`.
 
 Without it, Direct3D 10/11 games fall back to OpenGL 4.1, and many will crash.
+
+## Build an installer
+
+On a Mac with Xcode's command-line tools and Python 3.9+, after building Wine:
+
+```bash
+# Official DXMT source, including its exact pinned submodules (for source redistribution)
+git clone --branch v0.80 --recurse-submodules https://github.com/3Shain/dxmt.git dxmt-source
+curl -fL https://dl.winehq.org/wine/wine-gecko/2.47.4/wine-gecko-2.47.4-src.tar.xz \
+  -o wine-gecko-2.47.4-src.tar.xz
+python3 tests/packaging-test.py
+python3 packaging/package.py --runtime "$PWD/dist" --sources "$PWD/src" \
+  --dxmt-source "$PWD/dxmt-source" --gecko-source "$PWD/wine-gecko-2.47.4-src.tar.xz" \
+  --output "$PWD/release" --version 1.1.0
+```
+
+Use the **actual patched source trees used to build the supplied runtime**, not a newer
+checkout. When rebuilding from the release source archive, restore its `upstream/Wine`,
+`GMP`, `GnuTLS`, `FreeType`, and `Nettle` trees to the locations used in `build-*.sh`;
+the archive also contains DXMT with submodules and Wine Gecko's source tarball. The
+`cuvee/` directory contains the matching scripts and patches. The archive is required
+alongside the binaries when publishing a release.
+
+Output: `.pkg` and `.dmg` containing a self-contained `Cuvee.app`, corresponding source archive, release
+metadata, install notes and `SHA256SUMS.txt`. The packager never installs the app, modifies
+a keychain, copies bottles, or changes the input runtime. It removes CrossOver-copied
+MoltenVK and the optional VKD3D-Proton/Metal Shader Converter bundle. It fails if a bundled
+Mach-O dependency is missing, points outside the app, or retains a non-system absolute
+library path. Release packages currently use ad-hoc signatures and are not notarized.
+
+The existing local developer build remains available. For an isolated launcher build:
+
+```bash
+launcher/build.sh --ad-hoc --no-install --output /tmp/cuvee-build/Cuvee.app
+```
+
+GitHub Actions runs the launcher build, shell syntax checks and packaging tests for pull
+requests and main. It does not automatically publish unverified engine builds.
 
 ## Use
 

@@ -4,6 +4,19 @@
 # Signed with a local self-signed certificate so macOS keeps any grant across rebuilds (ad hoc = new identity each build).
 set -euo pipefail
 cd "$(dirname "$0")"
+INSTALL=1
+AD_HOC=0
+APP="${TMPDIR:-/tmp}/cuvee-build/Cuvee.app"
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --output) APP="$2"; shift 2 ;;
+        --no-install) INSTALL=0; shift ;;
+        --ad-hoc) AD_HOC=1; shift ;;
+        *) echo "usage: $0 [--output /absolute/path/Cuvee.app] [--no-install] [--ad-hoc]" >&2; exit 2 ;;
+    esac
+done
+case "$APP" in /*/Cuvee.app) ;; *) echo "output must be an absolute path ending in /Cuvee.app" >&2; exit 2 ;; esac
+if [ "$AD_HOC" = 0 ]; then
 
 KEYCHAIN="$HOME/Library/Application Support/Cuvee/signing.keychain-db"   # private file, never in the search list
 IDENTITY="Cuvee Local Signing"
@@ -23,19 +36,25 @@ if ! security find-identity -p codesigning "$KEYCHAIN" 2>/dev/null | grep -q "$I
     rm -rf "$tmp"
 fi
 security unlock-keychain -p "" "$KEYCHAIN"
+fi
 
 # Assembled outside the Desktop: File Provider re-tags new files there and codesign then refuses the bundle.
-APP="${TMPDIR:-/tmp}/cuvee-build/Cuvee.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-swiftc -O -parse-as-library *.swift -o "$APP/Contents/MacOS/Cuvee"
+swiftc -O -target arm64-apple-macos14.0 -parse-as-library *.swift -o "$APP/Contents/MacOS/Cuvee"
 cp Info.plist "$APP/Contents/"
 cp ../branding/AppIcon.icns "$APP/Contents/Resources/"
 xattr -cr "$APP"
+if [ "$AD_HOC" = 1 ]; then
+    codesign --force --sign - "$APP"
+else
 codesign --force --sign "$IDENTITY" --keychain "$KEYCHAIN" --identifier io.github.yesstonksman.cuvee "$APP"
 req=$(codesign -d -r- "$APP" 2>&1)
 grep -q 'certificate leaf' <<<"$req" || { echo "signature has no certificate" >&2; exit 1; }
 
+fi
+codesign --verify --strict "$APP"
+if [ "$INSTALL" = 0 ]; then echo "→ $APP"; exit 0; fi
 DEST=/Applications/Cuvee.app
 rm -rf "$DEST"
 cp -R "$APP" "$DEST"

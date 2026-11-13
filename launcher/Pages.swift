@@ -104,7 +104,10 @@ struct BottlePage: View {
             Text(tr("Réglages", "Settings")).font(.title3.weight(.semibold))
             Form {
                 Picker(tr("Moteur graphique", "Graphics engine"), selection: graphics) {
-                    ForEach(Graphics.allCases) { Text($0.label).tag($0) }
+                    // Keep an imported bottle's current choice visible even if its engine is unavailable.
+                    ForEach(Graphics.allCases.filter { Graphics.available.contains($0) || $0 == bottle.graphics }) {
+                        Text($0.label).tag($0)
+                    }
                 }
                 Toggle(tr("Mise à l'échelle MetalFX", "MetalFX upscaling"), isOn: metalFX).disabled(bottle.graphics != .dxmt)
             }
@@ -145,7 +148,9 @@ struct BottlePage: View {
         case .dxmt: tr("Direct3D 10/11 traduit directement en Metal. L'option DLSS d'un jeu DirectX 11 passe par MetalFX ; le FSR se règle dans le jeu.",
                        "Direct3D 10/11 turned straight into Metal. A DirectX 11 game's DLSS option uses MetalFX; FSR is set in the game.")
         }
-        return base + " " + tr("Pris en compte au prochain lancement.", "Applies from the next launch.")
+        let limitation = hasMoltenVK ? "" : tr(" Cette édition inclut Metal (DXMT) et OpenGL ; Vulkan et DirectX 12 ne sont pas inclus.",
+                                                " This edition includes Metal (DXMT) and OpenGL; Vulkan and DirectX 12 are not included.")
+        return base + limitation + " " + tr("Pris en compte au prochain lancement.", "Applies from the next launch.")
     }
 }
 

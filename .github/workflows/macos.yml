@@ -1,0 +1,21 @@
+name: macOS checks
+on:
+  push:
+    branches: [main, 'feat/**', 'fix/**']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  macos-checks:
+    name: macOS checks
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax
+        run: bash -n cuvee launcher/build.sh build-deps.sh build-wine.sh build-vkd3d-proton.sh fetch-sources.sh
+      - name: Packaging isolation and relocation
+        run: python3 tests/packaging-test.py
+      - name: Build launcher without installing or touching keychains
+        run: bash launcher/build.sh --ad-hoc --no-install --output "$RUNNER_TEMP/Cuvee.app"
+      - name: Verify app signature
+        run: codesign --verify --strict "$RUNNER_TEMP/Cuvee.app"
