@@ -148,6 +148,8 @@ struct Sidebar: View {
 
 struct RootView: View {
     @ObservedObject private var model = LauncherModel.shared
+    @Environment(\.openWindow) private var openWindow
+    @ObservedObject private var updater = Updater.shared
     @AppStorage(Language.key) private var language = Language.system.rawValue   // re-renders every text on change
 
     var body: some View {
@@ -160,6 +162,16 @@ struct RootView: View {
         .searchable(text: $model.query, placement: .sidebar, prompt: tr("Rechercher", "Search"))
         .id(language)
         .frame(minWidth: 900, minHeight: 620)
+        .safeAreaInset(edge: .top) {
+            if case .available(let update) = updater.phase {
+                HStack {
+                    Text(tr("Cuvee \(update.version) est disponible", "Cuvee \(update.version) is available"))
+                    Spacer()
+                    Button(tr("Mettre à jour", "Update")) { openWindow(id: "updates") }
+                }.padding(12).background(.bar)
+            }
+        }
+        .task { updater.check(automatic: true) }
         .sheet(isPresented: $model.creating) { NewBottleSheet(model: model) }
         .confirmationDialog(tr("Mettre « \(model.removing?.name ?? "") » à la Corbeille ?",
                                "Move “\(model.removing?.name ?? "")” to the Trash?"),
@@ -180,6 +192,7 @@ struct RootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.refresh()
+            updater.check(automatic: true)
         }
     }
 
@@ -216,9 +229,11 @@ struct SettingsView: View {
                 Text("Français").tag(Language.fr.rawValue)
                 Text("English").tag(Language.en.rawValue)
             }
+            Divider()
+            UpdateView()
         }
         .padding(24)
-        .frame(width: 380)
+        .frame(width: 460)
         .id(language)
     }
 }
@@ -263,6 +278,7 @@ struct CuveeApp: App {
         .defaultSize(width: 1200, height: 880)   // a bottle page (games, settings, recommendation) fits without scrolling
         .windowResizability(.contentMinSize)
         .commands {
+            UpdateCommands()
             CommandGroup(replacing: .help) {
                 Button(tr("Signaler un bug…", "Report a bug…")) { BugReport.open() }
             }
@@ -270,5 +286,9 @@ struct CuveeApp: App {
         Settings {
             SettingsView().preferredColorScheme(.dark)
         }
+        Window(tr("Mises à jour Cuvee", "Cuvee updates"), id: "updates") {
+            UpdateView().padding(24).frame(width: 440).preferredColorScheme(.dark)
+        }
+        .windowResizability(.contentSize)
     }
 }

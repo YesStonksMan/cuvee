@@ -15,6 +15,10 @@ jobs:
         run: bash -n cuvee launcher/build.sh build-deps.sh build-wine.sh build-vkd3d-proton.sh fetch-sources.sh
       - name: Packaging isolation and relocation
         run: python3 tests/packaging-test.py
+      - name: Update feed and integrity checks
+        run: |
+          swiftc -parse-as-library launcher/UpdateFeed.swift launcher/UpdateIntegrity.swift tests/update-feed.swift -o "$RUNNER_TEMP/update-test"
+          "$RUNNER_TEMP/update-test"
       - name: Build launcher without installing or touching keychains
         run: bash launcher/build.sh --ad-hoc --no-install --output "$RUNNER_TEMP/Cuvee.app"
       - name: Verify app signature

@@ -46,6 +46,24 @@ nécessaire. Préversion sans notarisation Apple : macOS peut demander une autor
 Metal (DirectX 10/11) et OpenGL inclus ; Vulkan et DirectX 12 absents de cette édition.
 Installer un lanceur puis utiliser son propre compte. Jeux et sauvegardes restent personnels.*
 
+## Updates in the app
+
+Cuvee checks GitHub Releases at launch and at most once per day while running. A banner
+announces newer versions. Use **Cuvee → Check for updates…** or Settings to download the
+update, then **Install and quit Cuvee**. The downloaded PKG's SHA-256 is checked against
+GitHub's release-asset digest before installation. Close games and launchers first; your
+games and saves stay in your user folder. Automatic checks can be disabled in Settings.
+
+For maintainers: change the three-part number in `VERSION` and push to `main`. The release
+workflow builds and tests the engine and app, packages the installers and corresponding
+sources, and publishes a GitHub Release. Reusing an already published version does not
+replace its files. A failed build does not publish an update. Until Developer ID signing
+and notarization are configured, published versions are marked as previews.
+
+*En français : Cuvee signale les nouvelles versions. Menu Cuvee → Rechercher les mises à
+jour…, puis télécharger et installer. Côté GitHub : augmenter `VERSION` et pousser sur
+`main` déclenche la construction et la publication ; les utilisateurs choisissent quand installer.*
+
 ## Status
 
 Tested on an Apple Silicon Mac with macOS 27, through Rosetta 2.
@@ -205,8 +223,8 @@ The existing local developer build remains available. For an isolated launcher b
 launcher/build.sh --ad-hoc --no-install --output /tmp/cuvee-build/Cuvee.app
 ```
 
-GitHub Actions runs the launcher build, shell syntax checks and packaging tests for pull
-requests and main. It does not automatically publish unverified engine builds.
+GitHub Actions runs the launcher build, shell syntax checks, updater tests and packaging tests.
+A new `VERSION` on main triggers an engine build and publishes installers only after successful checks.
 
 ## Use
 

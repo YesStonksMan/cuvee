@@ -43,6 +43,10 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 swiftc -O -target arm64-apple-macos14.0 -parse-as-library *.swift -o "$APP/Contents/MacOS/Cuvee"
 cp Info.plist "$APP/Contents/"
+VERSION="$(cat ../VERSION)"
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "invalid VERSION" >&2; exit 2; }
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$APP/Contents/Info.plist"
 cp ../branding/AppIcon.icns "$APP/Contents/Resources/"
 xattr -cr "$APP"
 if [ "$AD_HOC" = 1 ]; then

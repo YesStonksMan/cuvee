@@ -144,7 +144,7 @@ def sources_and_licenses(args, resources, output):
         files = run('git', '-C', ROOT, 'ls-files', '--cached', '--others', '--exclude-standard', '-z').split('\0')
         for name in files:
             if name and (name in {'cuvee', 'LICENSE', 'README.md', '.gitignore', 'fetch-sources.sh',
-                                 'build-deps.sh', 'build-wine.sh', 'build-vkd3d-proton.sh'}
+                                 'build-deps.sh', 'build-wine.sh', 'build-vkd3d-proton.sh', 'VERSION'}
                          or Path(name).parts[0] in {'launcher', 'patches', 'packaging', 'branding', 'tests', '.github'}):
                 archive.add(ROOT / name, arcname='cuvee/' + name, filter=source_filter)
         for name, path in components.items():
@@ -175,7 +175,7 @@ def main():
     parser.add_argument('--dxmt-source', type=Path, required=True, help='DXMT v0.80 source with submodules')
     parser.add_argument('--gecko-source', type=Path, required=True, help='official wine-gecko-2.47.4-src.tar.xz')
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--version', default='1.1.0')
+    parser.add_argument('--version', default=(ROOT / 'VERSION').read_text().strip())
     args = parser.parse_args()
     if not re.fullmatch(r'\d+\.\d+\.\d+', args.version):
         parser.error('version must be major.minor.patch')

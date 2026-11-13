@@ -16,6 +16,8 @@ Cette édition inclut Wine, Metal (DXMT) pour DirectX 10/11, OpenGL et Wine Geck
 Vulkan, MoltenVK et DirectX 12 ne sont pas inclus. Les jeux avec anti-triche
 peuvent être incompatibles. Les achats et comptes Steam/Epic/etc. restent personnels.
 Installer un lanceur depuis Cuvee, puis se connecter avec son propre compte.
+Pour les mises à jour : menu Cuvee > Rechercher les mises à jour…, télécharger,
+puis Installer et quitter Cuvee. Les nouvelles versions sont aussi signalées dans l'app.
 Les jeux, bouteilles et téléchargements sont propres à chaque utilisateur dans
 ~/Library/Application Support/Cuvee. Aucun compte ou jeu de l'auteur n'est inclus.
 Quitter Cuvee et les jeux avant une mise à jour. Supprimer Cuvee.app désinstalle
@@ -32,7 +34,8 @@ If macOS blocks it, after trying to open it use System Settings > Privacy & Secu
 Open Anyway only if you trust this preview. Do not disable Gatekeeper.
 Includes Wine, Metal (DXMT) for DirectX 10/11, OpenGL and Wine Gecko.
 Vulkan, MoltenVK and DirectX 12 are not included. Anti-cheat games may be incompatible.
-Install a launcher in Cuvee and sign in with your own account. Games, bottles and
+Install a launcher in Cuvee and sign in with your own account.
+For updates, use Cuvee > Check for updates…, download, then Install and quit Cuvee. Games, bottles and
 downloads are stored separately per user in ~/Library/Application Support/Cuvee.
 Quit Cuvee and games before updating. Deleting Cuvee.app leaves games and saves intact.
 

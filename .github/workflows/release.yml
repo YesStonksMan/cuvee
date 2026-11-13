@@ -1,0 +1,76 @@
+name: macOS release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: cuvee-release
+  cancel-in-progress: false
+jobs:
+  release:
+    name: Build and publish installer
+    runs-on: macos-15
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check release version
+        id: version
+        shell: bash
+        run: |
+          version=$(cat VERSION)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          echo "number=$version" >> "$GITHUB_OUTPUT"
+          draft=$(gh release view "v$version" --json isDraft --jq .isDraft 2>/dev/null || echo missing)
+          if [ "$draft" = false ]; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "Version $version already published; leaving it unchanged."
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install build tools
+        if: steps.version.outputs.needed == 'true'
+        run: |
+          brew install bison flex mingw-w64 autoconf automake libtool pkgconf gettext
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix flex)/bin" >> "$GITHUB_PATH"
+      - name: Check packaging and update feed
+        if: steps.version.outputs.needed == 'true'
+        run: |
+          bash -n cuvee launcher/build.sh build-deps.sh build-wine.sh fetch-sources.sh
+          python3 tests/packaging-test.py
+          swiftc -parse-as-library launcher/UpdateFeed.swift launcher/UpdateIntegrity.swift tests/update-feed.swift -o "$RUNNER_TEMP/update-test"
+          "$RUNNER_TEMP/update-test"
+      - name: Fetch and build engine from public sources
+        if: steps.version.outputs.needed == 'true'
+        run: |
+          ./fetch-sources.sh
+          ./build-deps.sh
+          ./build-wine.sh
+      - name: Fetch corresponding DXMT and Gecko sources
+        if: steps.version.outputs.needed == 'true'
+        run: |
+          git clone --branch v0.80 --depth 1 --recurse-submodules --shallow-submodules https://github.com/3Shain/dxmt.git "$RUNNER_TEMP/dxmt-source"
+          curl -fL --retry 3 https://dl.winehq.org/wine/wine-gecko/2.47.4/wine-gecko-2.47.4-src.tar.xz -o "$RUNNER_TEMP/wine-gecko-2.47.4-src.tar.xz"
+      - name: Build and verify Mac installers
+        if: steps.version.outputs.needed == 'true'
+        run: |
+          python3 packaging/package.py --runtime "$PWD/dist" --sources "$PWD/src" \
+            --dxmt-source "$RUNNER_TEMP/dxmt-source" --gecko-source "$RUNNER_TEMP/wine-gecko-2.47.4-src.tar.xz" \
+            --output "$RUNNER_TEMP/release" --version '${{ steps.version.outputs.number }}'
+          cd "$RUNNER_TEMP/release"
+          shasum -a 256 -c SHA256SUMS.txt
+      - name: Stage release and upload all assets
+        if: steps.version.outputs.needed == 'true' && github.ref == 'refs/heads/main'
+        env:
+          VERSION: ${{ steps.version.outputs.number }}
+        run: |
+          if ! gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release create "v$VERSION" --draft --prerelease --target "$GITHUB_SHA" \
+              --title "Cuvee $VERSION — macOS preview" --notes-file packaging/RELEASE-NOTES.md
+          fi
+          gh release upload "v$VERSION" "$RUNNER_TEMP/release/"* --clobber
+          gh release edit "v$VERSION" --draft=false --prerelease
