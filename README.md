@@ -1,26 +1,35 @@
 # Cuvee
 
-Play your Windows games on a Mac (Steam, Epic Games, Battle.net…) with a Wine built from public source.
+**Your Windows games, in one Mac app.**
 
-Cuvee builds the Wine that ships inside CrossOver 26.3 (Wine 11.0) from the source code CodeWeavers publishes,
-adds a few small patches so the game launchers work, and gives you:
+Run compatible Windows games on your Apple Silicon Mac. Install launchers such as Steam and Epic Games,
+find your games in one library, adjust graphics settings, and get updates from the app.
+Cuvee has a native Mac interface in French and English.
 
-- `cuvee`, a command-line bottle manager: install a launcher in its own bottle, create, remove or import bottles,
-  pick each bottle's graphics engine (Vulkan, OpenGL or Metal with MetalFX upscaling), launch a game, run a program;
-- `Cuvee.app`, in English or French: a sidebar to search, start or install each launcher, open a bottle or report
-  a bug, every installed game in one place, and per-bottle settings with a recommendation for your Apple Silicon chip.
+[![Télécharger pour Mac — PKG](https://img.shields.io/badge/T%C3%A9l%C3%A9charger_pour_Mac-PKG-ff6a9a?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/YesStonksMan/cuvee/releases/download/v1.1.0/Cuvee-1.1.0-macOS-AppleSilicon.pkg)
 
-> Cuvee is an independent project. It is not affiliated with, endorsed by or supported by CodeWeavers.
-> CrossOver is a trademark of CodeWeavers, Inc.; Steam is a trademark of Valve Corporation; Wine is a trademark
-> of the Wine project. If CrossOver works for you, buy it: CodeWeavers funds a large share of Wine's development,
-> and their source releases are what makes this project possible.
+**Cuvee 1.1.0 · [Installateur PKG — recommandé](https://github.com/YesStonksMan/cuvee/releases/download/v1.1.0/Cuvee-1.1.0-macOS-AppleSilicon.pkg) · [Alternative DMG](https://github.com/YesStonksMan/cuvee/releases/download/v1.1.0/Cuvee-1.1.0-macOS-AppleSilicon.dmg) · [Notes de version](https://github.com/YesStonksMan/cuvee/releases/tag/v1.1.0)**
 
-*En français : Cuvee compile le Wine de CrossOver 26.3 depuis la source publique de CodeWeavers, ajoute des correctifs
-pour les lanceurs de jeux (Steam, Epic, Battle.net…), et fournit une commande `cuvee` et une app pour gérer les bouteilles. Projet indépendant, sans lien avec CodeWeavers.*
+Apple Silicon (M1 or later) · macOS 15+ · Rosetta 2 · Free and open source
+
+**Pour installer :** télécharger le PKG, l'ouvrir, puis lancer Cuvee depuis Applications.
+Aucun Homebrew, Xcode ou terminal nécessaire.
+
+*Cuvee réunit tes jeux Windows compatibles, tes lanceurs et tes réglages dans une app Mac.
+Les mises à jour sont proposées directement dans l'app.*
+
+> **Preview / Préversion.** Not notarized by Apple: macOS may ask you to allow the app in
+> Privacy & Security after the first open attempt. This download includes Metal (DirectX 10/11)
+> and OpenGL; Vulkan and DirectX 12 are not included. Game compatibility varies.
+
+> Cuvee is an independent project, not affiliated with or endorsed by CodeWeavers, Valve or Epic Games.
+> It builds Wine 11.0 from CodeWeavers' public CrossOver 26.3 source release and adds its own patches.
+> Wine, CrossOver and the game launchers keep their owners' trademarks. CodeWeavers funds a large part
+> of Wine's development; if CrossOver works for you, support it.
 
 ## Install on another Mac
 
-Download the `.pkg` installer from [Releases](https://github.com/YesStonksMan/cuvee/releases).
+Download the **[Mac installer (.pkg)](https://github.com/YesStonksMan/cuvee/releases/download/v1.1.0/Cuvee-1.1.0-macOS-AppleSilicon.pkg)** directly.
 Open it and follow macOS Installer; Cuvee is installed in Applications. A `.dmg` is also
 provided if you prefer to drag Cuvee into Applications. No Xcode, Homebrew or terminal is
 needed to use this edition.
