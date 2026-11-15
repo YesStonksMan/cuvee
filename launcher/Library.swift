@@ -211,6 +211,7 @@ enum Library {
 enum CLI {
     static func run(_ args: [String], onExit: @escaping @Sendable (Int32) -> Void) throws {
         try FileManager.default.createDirectory(at: logFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        rotateLog()
         if !FileManager.default.fileExists(atPath: logFile.path) {
             FileManager.default.createFile(atPath: logFile.path, contents: nil)
         }
@@ -225,6 +226,19 @@ enum CLI {
         process.standardError = log
         process.terminationHandler = { onExit($0.terminationStatus) }
         try process.run()
+    }
+
+    /// Steam's output is appended on every launch and nothing ever trimmed it (the log reached 10 GB, 13-11-2026).
+    /// Past 20 MB, the log becomes Cuvee.old.log (replacing the previous one) and a fresh one starts.
+    // ponytail: checked only at launch, so one very long session can still grow past 20 MB until the next launch.
+    static let maxLogBytes = 20 * 1024 * 1024
+
+    static func rotateLog() {
+        let fm = FileManager.default
+        guard let size = (try? fm.attributesOfItem(atPath: logFile.path))?[.size] as? Int, size > maxLogBytes else { return }
+        let old = logFile.deletingLastPathComponent().appending(path: "Cuvee.old.log")
+        try? fm.removeItem(at: old)
+        try? fm.moveItem(at: logFile, to: old)
     }
 
     static func args(for action: TileAction) -> [String] {
