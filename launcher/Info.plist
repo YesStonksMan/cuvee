@@ -11,4 +11,5 @@
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSMicrophoneUsageDescription</key><string>Games running in Cuvee use the microphone for voice chat.</string>
 </dict></plist>

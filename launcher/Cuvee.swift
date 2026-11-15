@@ -2,6 +2,7 @@
 // Cuvee window: a sidebar (search, all games, launchers to start or install, bottles, bug reporting) and the selected
 // page. Every action calls the installed runtime CLI.
 import AppKit
+import AVFoundation
 import SwiftUI
 
 private let pink = Color(red: 1, green: 0.416, blue: 0.604)      // #ff6a9a, from the app icon
@@ -240,6 +241,14 @@ struct SettingsView: View {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    /// Wine asks for the microphone only when a game opens it, mid-loading (REPO froze there): ask once at launch.
+    /// macOS remembers the answer for this signature, so later launches ask nothing.
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
+            AVCaptureDevice.requestAccess(for: .audio) { _ in }
+        }
+    }
 
     /// Quitting Cuvee closes what it started, the way its Stop button does.
     @MainActor func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
