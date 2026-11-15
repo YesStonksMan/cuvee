@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — 2026-11-15 (audit)
+## 1.1.1 — 2026-11-15 (preview)
 
 - Engine: msync no longer leaks a server node when a wait gives up early (`patches/msync-wait-leak.patch`); this was the
   `node memory pool exhausted` line that filled Cuvee.log (10 GB). `tests/msync-leak.sh` reproduces it in ~20 s.
@@ -11,7 +11,7 @@
 - A build made on the Mac no longer offers the public installer (it would replace the developer runtime).
 - CLI: a cut download is never kept as a cached installer, https only; `.x` and `-x` bottle names refused.
 - Release workflow: a GitHub API error stops the run instead of rebuilding over a published release.
-- Includes the microphone fix (PR #4) and the log cap, neither of which is in 1.1.0. Not released yet.
+- Includes the microphone fix (PR #4) and the log cap, neither of which was in 1.1.0.
 
 ## 1.1.0 — 2026-11-13 (preview)
 
