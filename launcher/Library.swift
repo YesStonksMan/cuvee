@@ -138,8 +138,6 @@ enum Library {
               let id = text.firstMatch(of: #/(?i)"appid"\s+"(\d+)"/#)?.1,
               let name = text.firstMatch(of: #/"name"\s+"([^"]+)"/#)?.1,
               !hiddenApps.contains(String(id)) else { return nil }
-        // StateFlags bit 4 = fully installed; a game still downloading has a manifest but nothing to launch
-        if let flags = text.firstMatch(of: #/"StateFlags"\s+"(\d+)"/#)?.1, (Int(flags) ?? 4) & 4 == 0 { return nil }
         let dir = text.firstMatch(of: #/"installdir"\s+"([^"]+)"/#)?.1
         return Tile(id: "\(bottle)/\(id)", name: String(name), art: art(String(id), steamDir: steamDir),
                     action: .game(bottle: bottle, appid: String(id)), process: dir.map { "steamapps\\common\\\($0)\\" })
