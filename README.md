@@ -6,9 +6,9 @@ Run compatible Windows games on your Apple Silicon Mac. Install launchers such a
 find your games in one library, adjust graphics settings, and get updates from the app.
 Cuvee has a native Mac interface in French and English.
 
-[![Télécharger pour Mac — PKG](https://img.shields.io/badge/T%C3%A9l%C3%A9charger_pour_Mac-PKG-ff6a9a?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/YesStonksMan/cuvee/releases/download/v1.1.0/Cuvee-1.1.0-macOS-AppleSilicon.pkg)
+[![Télécharger pour Mac — PKG](https://img.shields.io/badge/T%C3%A9l%C3%A9charger_pour_Mac-PKG-ff6a9a?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/YesStonksMan/cuvee/releases/download/v1.1.1/Cuvee-1.1.1-macOS-AppleSilicon.pkg)
 
-**Cuvee 1.1.0 · [Installateur PKG — recommandé](https://github.com/YesStonksMan/cuvee/releases/download/v1.1.0/Cuvee-1.1.0-macOS-AppleSilicon.pkg) · [Alternative DMG](https://github.com/YesStonksMan/cuvee/releases/download/v1.1.0/Cuvee-1.1.0-macOS-AppleSilicon.dmg) · [Notes de version](https://github.com/YesStonksMan/cuvee/releases/tag/v1.1.0)**
+**Cuvee 1.1.1 · [Installateur PKG — recommandé](https://github.com/YesStonksMan/cuvee/releases/download/v1.1.1/Cuvee-1.1.1-macOS-AppleSilicon.pkg) · [Alternative DMG](https://github.com/YesStonksMan/cuvee/releases/download/v1.1.1/Cuvee-1.1.1-macOS-AppleSilicon.dmg) · [Notes de version](https://github.com/YesStonksMan/cuvee/releases/tag/v1.1.1)**
 
 Apple Silicon (M1 or later) · macOS 15+ · Rosetta 2 · Free and open source
 
@@ -29,7 +29,7 @@ Les mises à jour sont proposées directement dans l'app.*
 
 ## Install on another Mac
 
-Download the **[Mac installer (.pkg)](https://github.com/YesStonksMan/cuvee/releases/download/v1.1.0/Cuvee-1.1.0-macOS-AppleSilicon.pkg)** directly.
+Download the **[Mac installer (.pkg)](https://github.com/YesStonksMan/cuvee/releases/download/v1.1.1/Cuvee-1.1.1-macOS-AppleSilicon.pkg)** directly.
 Open it and follow macOS Installer; Cuvee is installed in Applications. A `.dmg` is also
 provided if you prefer to drag Cuvee into Applications. No Xcode, Homebrew or terminal is
 needed to use this edition.
@@ -209,7 +209,7 @@ curl -fL https://dl.winehq.org/wine/wine-gecko/2.47.4/wine-gecko-2.47.4-src.tar.
 python3 tests/packaging-test.py
 python3 packaging/package.py --runtime "$PWD/dist" --sources "$PWD/src" \
   --dxmt-source "$PWD/dxmt-source" --gecko-source "$PWD/wine-gecko-2.47.4-src.tar.xz" \
-  --output "$PWD/release" --version 1.1.0
+  --output "$PWD/release" --version 1.1.1
 ```
 
 Use the **actual patched source trees used to build the supplied runtime**, not a newer
