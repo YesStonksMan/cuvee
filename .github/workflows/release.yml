@@ -24,7 +24,13 @@ jobs:
           version=$(cat VERSION)
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
           echo "number=$version" >> "$GITHUB_OUTPUT"
-          draft=$(gh release view "v$version" --json isDraft --jq .isDraft 2>/dev/null || echo missing)
+          # an API error is not "missing": never rebuild over (and --clobber) a release that is already published
+          out=$(gh release view "v$version" --json isDraft --jq .isDraft 2>&1) || true
+          case "$out" in
+            true|false) draft=$out ;;
+            *"release not found"*|*"HTTP 404"*) draft=missing ;;
+            *) echo "cannot read release v$version: $out" >&2; exit 1 ;;
+          esac
           if [ "$draft" = false ]; then
             echo "needed=false" >> "$GITHUB_OUTPUT"
             echo "Version $version already published; leaving it unchanged."
