@@ -97,6 +97,7 @@ struct Sidebar: View {
                     Spacer()
                     Button { model.creating = true } label: { Image(systemName: "plus") }
                         .buttonStyle(.borderless)
+                        .disabled(model.activity != nil)   // one bottle at a time: the first is still being created
                         .help(tr("Nouvelle bouteille vide", "New empty bottle"))
                         .accessibilityLabel(tr("Nouvelle bouteille vide", "New empty bottle"))
                 }
@@ -121,6 +122,7 @@ struct Sidebar: View {
             if let opener = bottle.opener {
                 if model.launching.contains(opener.id) {
                     ProgressView().controlSize(.small)
+                        .accessibilityLabel(tr("Lancement de \(kind.bottle)", "Launching \(kind.bottle)"))
                 } else {
                     Button { model.start(opener) } label: { Image(systemName: "play.fill") }
                         .buttonStyle(.borderless)
@@ -137,11 +139,13 @@ struct Sidebar: View {
             Spacer()
             if model.installing.contains(kind.id) {
                 ProgressView().controlSize(.small).help(tr("Installation…", "Installing…"))
+                    .accessibilityLabel(tr("Installation de \(kind.bottle)", "Installing \(kind.bottle)"))
             } else {
                 Button(tr("Installer", "Install")) { model.install(kind) }
                     .buttonStyle(.borderless)
                     .controlSize(.small)
                     .help(tr("Installer \(kind.bottle) depuis le site de son éditeur", "Install \(kind.bottle) from its publisher's site"))
+                    .accessibilityLabel(tr("Installer \(kind.bottle)", "Install \(kind.bottle)"))
             }
         }
     }
@@ -158,7 +162,12 @@ struct RootView: View {
             Sidebar(model: model)
         } detail: {
             detail
-                .safeAreaInset(edge: .bottom) { if let failure = model.failure { failureBar(failure) } }
+                .safeAreaInset(edge: .bottom) {
+                    VStack(spacing: 0) {
+                        if let activity = model.activity { activityBar(activity) }
+                        if let failure = model.failure { failureBar(failure) }
+                    }
+                }
         }
         .searchable(text: $model.query, placement: .sidebar, prompt: tr("Rechercher", "Search"))
         .id(language)
@@ -206,11 +215,24 @@ struct RootView: View {
         }
     }
 
+    private func activityBar(_ text: String) -> some View {
+        HStack(spacing: 10) {
+            ProgressView().controlSize(.small)
+            Text(text + "…").font(.callout)
+            Spacer()
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(.bar)
+    }
+
     private func failureBar(_ text: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(pink)
             Text(text).font(.callout).textSelection(.enabled)
             Spacer()
+            Button(tr("Journal", "Log")) { BugReport.revealLog() }
+                .buttonStyle(.borderless)
+                .help(tr("Afficher le journal dans le Finder", "Show the log in the Finder"))
             Button { model.failure = nil } label: { Image(systemName: "xmark") }
                 .buttonStyle(.borderless)
                 .accessibilityLabel(tr("Fermer", "Dismiss"))

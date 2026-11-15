@@ -39,7 +39,7 @@ if [ ! -f "$HERE/dist/lib/libMoltenVK.dylib" ] && [ -d "$HERE/dist/lib/dxmt" ]; 
 
 bottle() { # NAME -> sets WINEPREFIX
   [ -n "${1:-}" ] || die "bottle name required"
-  case "$1" in */*|.|..) die "invalid bottle name '$1'";; esac
+  case "$1" in */*|.*|-*) die "invalid bottle name '$1'";; esac   # no path, no hidden file (.settings.lock), no option
   export WINEPREFIX="$BOTTLES/$1"
 }
 
@@ -180,7 +180,10 @@ fetch() { # ID FILE URL -> prints the cached path; downloads only what is missin
   mkdir -p "$dir"
   if [ ! -s "$dir/$2" ]; then
     echo "downloading $2..." >&2
-    curl -fL --retry 3 -o "$dir/$2.$$.part" "$3" >&2   # per-process: two installs may fetch the same file
+    # per-process: two installs may fetch the same file. Checked by hand: `set -e` is off inside $(fetch ...),
+    # and a cut download must never be kept as the cached installer.
+    curl -fL --proto '=https' --proto-redir '=https' --connect-timeout 30 --retry 3 -o "$dir/$2.$$.part" "$3" >&2 \
+      || { rm -f "$dir/$2.$$.part"; die "download of $2 failed"; }
     mv "$dir/$2.$$.part" "$dir/$2"
   fi
   echo "$dir/$2"
@@ -267,7 +270,9 @@ case "${1:-}" in
   settings)  settings_cmd "${2:-}" ;;
   set)       set_cmd "${2:-}" "${3:-}" "${4:-}" ;;
   steam)     add steam; open_cmd Steam ;;
-  game)      need_bottle "${2:-}"; [[ "${3:-}" =~ ^[0-9]+$ ]] || die "steam appid required"; refresh; apply_settings
+  game)      need_bottle "${2:-}"; [[ "${3:-}" =~ ^[0-9]+$ ]] || die "steam appid required"
+             [ -f "$WINEPREFIX/drive_c/Program Files (x86)/Steam/steam.exe" ] || die "no Steam in bottle '$2'"
+             refresh; apply_settings
              cd "$WINEPREFIX/drive_c/Program Files (x86)/Steam"; exec "$WINE" steam.exe ${CUVEE_STEAM_ARGS:-} "steam://rungameid/$3" ;;
   run)       need_bottle "${2:-}"; shift 2; [ $# -gt 0 ] || die "program required"; refresh; apply_settings; exec "$WINE" "$@" ;;
   cfg)       need_bottle "${2:-}"; refresh; exec "$WINE" winecfg ;;

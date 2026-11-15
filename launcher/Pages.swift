@@ -26,8 +26,11 @@ struct LibraryPage: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 if model.games.isEmpty {
-                    Text(tr("Aucun jeu installé pour l'instant. Installe un lanceur dans la barre de gauche, puis tes jeux depuis ce lanceur.",
-                            "No games installed yet. Install a launcher from the sidebar, then your games from that launcher."))
+                    Text(model.bottles.contains { $0.launcher != nil }
+                         ? tr("Aucun jeu installé pour l'instant. Démarre un lanceur dans la barre de gauche et installes-y tes jeux : ils apparaîtront ici.",
+                              "No games installed yet. Start a launcher from the sidebar and install your games in it: they will show up here.")
+                         : tr("Aucun jeu installé pour l'instant. Installe un lanceur dans la barre de gauche, puis tes jeux depuis ce lanceur.",
+                              "No games installed yet. Install a launcher from the sidebar, then your games from that launcher."))
                         .foregroundStyle(.secondary).frame(maxWidth: 420, alignment: .leading)
                 } else if shown.isEmpty {
                     Text(tr("Aucun jeu ne correspond à « \(model.query) ».", "No game matches “\(model.query)”."))
@@ -52,16 +55,20 @@ struct BottlePage: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 32) {
                 header
-                if !bottle.games.isEmpty {
+                let games = bottle.games.filter { model.matches($0.name) }   // the sidebar search filters here too
+                if !games.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {
                         Text(tr("Jeux", "Games")).font(.title3.weight(.semibold))
-                        TileGrid(tiles: bottle.games.filter { model.matches($0.name) }, model: model)
+                        TileGrid(tiles: games, model: model)
                     }
                 }
                 settings
+                let running = model.open.contains(bottle.name)   // `cuvee remove` refuses a running bottle
                 Button(role: .destructive) { model.removing = bottle } label: {
                     Label(tr("Mettre à la Corbeille…", "Move to Trash…"), systemImage: "trash")
                 }
+                .disabled(running)
+                .help(running ? tr("Arrête d'abord la bouteille", "Stop the bottle first") : "")
             }
             .padding(28)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -92,6 +99,19 @@ struct BottlePage: View {
                 .controlSize(.large)
                 .disabled(launching || stopping)
                 .keyboardShortcut(open ? nil : .defaultAction)   // Return must never close a running launcher
+            } else {
+                // no launcher: the bottle is used by running a program picked by hand
+                let stopping = model.stopping.contains(bottle.name)
+                if model.open.contains(bottle.name) || stopping {
+                    Button { model.stop(bottle) } label: {
+                        Label(stopping ? tr("Arrêt…", "Stopping…") : tr("Arrêter", "Stop"), systemImage: "stop.fill")
+                    }
+                    .tint(.red).controlSize(.large).disabled(stopping)
+                }
+                Button { model.runProgram(in: bottle) } label: {
+                    Label(tr("Lancer un programme…", "Run a program…"), systemImage: "play.fill").frame(minWidth: 110)
+                }
+                .buttonStyle(.borderedProminent).controlSize(.large)
             }
         }
     }

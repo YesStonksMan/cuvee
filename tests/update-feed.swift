@@ -32,6 +32,7 @@ struct UpdateFeedTests {
         check(UpdateFeed.newest([release("v1.2.0", preview: true)], after: "1.1.0")?.preview == true, "label preview")
         check(UpdateFeed.newest([release("v1.2.0", url: "https://evil.example/installer.pkg")], after: "1.1.0") == nil, "reject external host")
         check(UpdateFeed.newest([release("v1.2.0", url: "https://github.com/Other/repo/releases/download/v1.2.0/a.pkg")], after: "1.1.0") == nil, "reject other repository")
+        check(UpdateFeed.newest([release("v1.2.0", url: "https://github.com/YesStonksMan/cuvee/releases/download/../../../../Other/repo/releases/download/v1.2.0/Cuvee-1.2.0-macOS-AppleSilicon.pkg")], after: "1.1.0") == nil, "reject path leaving the repository")
         check(UpdateFeed.newest([release("v1.2.0", hash: "sha256:bad")], after: "1.1.0") == nil, "reject missing checksum")
         check(UpdateFeed.newest([release("v1.2.0", hash: "sha256:" + String(repeating: "z", count: 64))], after: "1.1.0") == nil, "reject malformed checksum")
         let decoded = try JSONDecoder().decode([GitHubRelease].self, from: Data("""

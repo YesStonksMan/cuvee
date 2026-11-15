@@ -12,6 +12,9 @@ final class Updater: ObservableObject {
     static let shared = Updater()
     static let automaticKey = "automaticallyCheckUpdates"
     let installed = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+    /// Only an installed release carries its own engine. A build made on this Mac uses the developer runtime
+    /// (MoltenVK, VKD3D-Proton): the release installer would replace it with the smaller distributed edition.
+    static let isRelease = cli.path.hasPrefix(Bundle.main.bundlePath + "/")
     private var lastCheck = Date.distantPast
     private let session: URLSession = {
         let config = URLSessionConfiguration.ephemeral
@@ -21,6 +24,7 @@ final class Updater: ObservableObject {
     }()
 
     func check(automatic: Bool = false) {
+        guard Self.isRelease else { return }
         switch phase { case .checking, .downloading, .ready: return; default: break }
         if automatic {
             guard UserDefaults.standard.object(forKey: Self.automaticKey) as? Bool ?? true,
@@ -130,11 +134,17 @@ struct UpdateView: View {
                 Button(tr("Installer et quitter Cuvee", "Install and quit Cuvee")) { updater.install(update, package: package) }
             case .failed(let message): Text(message).foregroundStyle(.red).textSelection(.enabled)
             }
-            Button(tr("Rechercher les mises à jour", "Check for updates")) { updater.check() }
-            Toggle(tr("Rechercher automatiquement", "Check automatically"), isOn: $automatic)
-            Text(tr("Les mises à jour sont proposées ici ; l'installateur macOS demande ton accord avant de les appliquer.",
-                    "Updates appear here; macOS Installer asks for your approval before applying them."))
-                .font(.caption).foregroundStyle(.secondary)
+            if Updater.isRelease {
+                Button(tr("Rechercher les mises à jour", "Check for updates")) { updater.check() }
+                Toggle(tr("Rechercher automatiquement", "Check automatically"), isOn: $automatic)
+                Text(tr("Les mises à jour sont proposées ici ; l'installateur macOS demande ton accord avant de les appliquer.",
+                        "Updates appear here; macOS Installer asks for your approval before applying them."))
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text(tr("Version compilée sur ce Mac : elle se met à jour en la recompilant, pas par l'installateur.",
+                        "Built on this Mac: it updates by rebuilding it, not through the installer."))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         .fixedSize(horizontal: false, vertical: true)
     }

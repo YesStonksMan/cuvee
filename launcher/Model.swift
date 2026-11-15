@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // State of Cuvee.app: the bottles on disk, what is selected, searched, launching or installing.
+import AppKit
 import Foundation
+import UniformTypeIdentifiers
 
 enum Page: Hashable {
     case library
@@ -19,6 +21,7 @@ final class LauncherModel: ObservableObject {
     @Published var launching: Set<String> = []
     @Published var hovered: String?
     @Published var failure: String?
+    @Published var activity: String?            // a slow command with no other sign of life (creating a bottle)
     @Published var creating = false
     @Published var removing: Bottle?
     @Published var open: Set<String> = []       // bottles whose programs run, polled: Steam can be quit from its own menu
@@ -39,7 +42,7 @@ final class LauncherModel: ObservableObject {
         let group = DispatchGroup()
         for bottle in list {
             group.enter()
-            do { try CLI.run(["stop", bottle.name]) { _ in group.leave() } } catch { group.leave() }
+            do { try CLI.run(["stop", bottle.name]) { _, _ in group.leave() } } catch { group.leave() }
         }
         group.notify(queue: .main, execute: done)
     }
@@ -82,7 +85,11 @@ final class LauncherModel: ObservableObject {
 
     func bottle(named name: String) -> Bottle? { bottles.first { $0.name == name } }
     func bottle(for kind: LauncherKind) -> Bottle? { bottles.first { $0.launcher == kind.id } }
-    var plainBottles: [Bottle] { bottles.filter { $0.launcher == nil } }
+    /// Every bottle the launcher rows do not show: empty ones, and a second bottle of a launcher (an imported Steam).
+    var plainBottles: [Bottle] {
+        let shown = Set(LauncherKind.all.compactMap { bottle(for: $0)?.name })
+        return bottles.filter { !shown.contains($0.name) }
+    }
 
     var games: [Tile] {
         bottles.flatMap(\.games).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -95,7 +102,9 @@ final class LauncherModel: ObservableObject {
 
     func start(_ tile: Tile) {
         guard !launching.contains(tile.id) else { return }
-        guard run(CLI.args(for: tile.action), what: tr("Lancement de \(tile.name)", "Launching \(tile.name)"), isLaunch: true)
+        // a launch that fails (no Vulkan in this edition...) must not keep its "Launching…" badge for 2 minutes
+        guard run(CLI.args(for: tile.action), what: tr("Lancement de \(tile.name)", "Launching \(tile.name)"), isLaunch: true,
+                  then: { ok in if !ok { self.launching.remove(tile.id) } })
         else { return }
         startedHere.insert(tile.action.bottle)
         launching.insert(tile.id)
@@ -103,7 +112,7 @@ final class LauncherModel: ObservableObject {
             // a launcher shows its window within seconds; a game waits for Steam (~30 s when Steam starts cold),
             // so its badge stays until the game's own process runs, at most 2 minutes
             let deadline = Date().addingTimeInterval(tile.process == nil ? 6 : 120)
-            while Date() < deadline {
+            while Date() < deadline, launching.contains(tile.id) {
                 try? await Task.sleep(for: .seconds(1))
                 if let marker = tile.process, await Task.detached(operation: {
                     !Library.programs(in: tile.action.bottle, where: { $0.localizedCaseInsensitiveContains(marker) }).isEmpty
@@ -121,9 +130,22 @@ final class LauncherModel: ObservableObject {
     }
 
     func create(_ name: String) {
-        run(["create", name], what: tr("Création de « \(name) »", "Creating “\(name)”"), then: { ok in
+        let what = tr("Création de « \(name) »", "Creating “\(name)”")
+        if run(["create", name], what: what, then: { ok in
+            self.activity = nil
             if ok { self.page = .bottle(name) }
-        })
+        }) { activity = what }   // Windows takes ~20 s to set itself up, with nothing else on screen
+    }
+
+    /// A bottle without a launcher: pick a Windows program (an installer, a game's .exe) and run it there.
+    func runProgram(in bottle: Bottle) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "exe")].compactMap { $0 }
+        panel.message = tr("Choisis un programme Windows (.exe) à lancer dans « \(bottle.name) »",
+                           "Choose a Windows program (.exe) to run in “\(bottle.name)”")
+        guard panel.runModal() == .OK, let exe = panel.url else { return }
+        let what = tr("Lancement de \(exe.lastPathComponent)", "Launching \(exe.lastPathComponent)")
+        if run(["run", bottle.name, exe.path], what: what, isLaunch: true) { startedHere.insert(bottle.name) }
     }
 
     func remove(_ bottle: Bottle) {
@@ -146,13 +168,14 @@ final class LauncherModel: ObservableObject {
                      then: @escaping @MainActor (Bool) -> Void = { _ in }) -> Bool {
         let started = Date()
         do {
-            try CLI.run(args) { status in
+            try CLI.run(args) { status, reason in
                 Task { @MainActor in
                     // a launcher's own exit code arrives when it quits, maybe hours later: only an early exit is a failed launch
                     let failed = status != 0 && (!isLaunch || Date().timeIntervalSince(started) < 15)
                     if failed {
-                        self.failure = tr("\(what) : échec (code \(status)), voir ~/Library/Logs/Cuvee.log",
-                                          "\(what) failed (code \(status)), see ~/Library/Logs/Cuvee.log")
+                        // the CLI's own words when it has some ("bottle 'X' is running: quit its programs first")
+                        self.failure = reason.map { tr("\(what) : \($0)", "\(what): \($0)") }
+                            ?? tr("\(what) : échec (code \(status)), voir le journal", "\(what) failed (code \(status)), see the log")
                     }
                     if refreshing { self.refresh() }
                     then(status == 0)
@@ -161,7 +184,7 @@ final class LauncherModel: ObservableObject {
             failure = nil
             return true
         } catch {
-            failure = "\(what) : \(error.localizedDescription)"
+            failure = tr("\(what) : \(error.localizedDescription)", "\(what): \(error.localizedDescription)")
             return false
         }
     }
