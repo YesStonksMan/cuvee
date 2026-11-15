@@ -2,6 +2,7 @@
 // Cuvee window: a sidebar (search, all games, launchers to start or install, bottles, bug reporting) and the selected
 // page. Every action calls the installed runtime CLI.
 import AppKit
+import AVFoundation
 import SwiftUI
 
 private let pink = Color(red: 1, green: 0.416, blue: 0.604)      // #ff6a9a, from the app icon
@@ -96,6 +97,7 @@ struct Sidebar: View {
                     Spacer()
                     Button { model.creating = true } label: { Image(systemName: "plus") }
                         .buttonStyle(.borderless)
+                        .disabled(model.activity != nil)   // one bottle at a time: the first is still being created
                         .help(tr("Nouvelle bouteille vide", "New empty bottle"))
                         .accessibilityLabel(tr("Nouvelle bouteille vide", "New empty bottle"))
                 }
@@ -120,6 +122,7 @@ struct Sidebar: View {
             if let opener = bottle.opener {
                 if model.launching.contains(opener.id) {
                     ProgressView().controlSize(.small)
+                        .accessibilityLabel(tr("Lancement de \(kind.bottle)", "Launching \(kind.bottle)"))
                 } else {
                     Button { model.start(opener) } label: { Image(systemName: "play.fill") }
                         .buttonStyle(.borderless)
@@ -136,11 +139,13 @@ struct Sidebar: View {
             Spacer()
             if model.installing.contains(kind.id) {
                 ProgressView().controlSize(.small).help(tr("Installation…", "Installing…"))
+                    .accessibilityLabel(tr("Installation de \(kind.bottle)", "Installing \(kind.bottle)"))
             } else {
                 Button(tr("Installer", "Install")) { model.install(kind) }
                     .buttonStyle(.borderless)
                     .controlSize(.small)
                     .help(tr("Installer \(kind.bottle) depuis le site de son éditeur", "Install \(kind.bottle) from its publisher's site"))
+                    .accessibilityLabel(tr("Installer \(kind.bottle)", "Install \(kind.bottle)"))
             }
         }
     }
@@ -157,7 +162,12 @@ struct RootView: View {
             Sidebar(model: model)
         } detail: {
             detail
-                .safeAreaInset(edge: .bottom) { if let failure = model.failure { failureBar(failure) } }
+                .safeAreaInset(edge: .bottom) {
+                    VStack(spacing: 0) {
+                        if let activity = model.activity { activityBar(activity) }
+                        if let failure = model.failure { failureBar(failure) }
+                    }
+                }
         }
         .searchable(text: $model.query, placement: .sidebar, prompt: tr("Rechercher", "Search"))
         .id(language)
@@ -205,11 +215,24 @@ struct RootView: View {
         }
     }
 
+    private func activityBar(_ text: String) -> some View {
+        HStack(spacing: 10) {
+            ProgressView().controlSize(.small)
+            Text(text + "…").font(.callout)
+            Spacer()
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(.bar)
+    }
+
     private func failureBar(_ text: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(pink)
             Text(text).font(.callout).textSelection(.enabled)
             Spacer()
+            Button(tr("Journal", "Log")) { BugReport.revealLog() }
+                .buttonStyle(.borderless)
+                .help(tr("Afficher le journal dans le Finder", "Show the log in the Finder"))
             Button { model.failure = nil } label: { Image(systemName: "xmark") }
                 .buttonStyle(.borderless)
                 .accessibilityLabel(tr("Fermer", "Dismiss"))
@@ -240,6 +263,14 @@ struct SettingsView: View {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    /// Wine asks for the microphone only when a game opens it, mid-loading (REPO froze there): ask once at launch.
+    /// macOS remembers the answer for this signature, so later launches ask nothing.
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
+            AVCaptureDevice.requestAccess(for: .audio) { _ in }
+        }
+    }
 
     /// Quitting Cuvee closes what it started, the way its Stop button does.
     @MainActor func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

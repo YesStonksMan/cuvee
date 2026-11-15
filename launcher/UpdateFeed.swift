@@ -32,6 +32,7 @@ struct ReleaseAsset: Decodable {
               browserDownloadURL.user == nil, browserDownloadURL.password == nil,
               browserDownloadURL.port == nil || browserDownloadURL.port == 443,
               browserDownloadURL.path.hasPrefix("/YesStonksMan/cuvee/releases/download/"),
+              !browserDownloadURL.path.contains(".."),   // no way out of this repository's releases
               name.hasPrefix("Cuvee-"), name.hasSuffix("-macOS-AppleSilicon.pkg"),
               browserDownloadURL.lastPathComponent == name,
               let digest, digest.hasPrefix("sha256:"), digest.count == 71 else { return false }

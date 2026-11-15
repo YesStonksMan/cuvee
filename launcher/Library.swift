@@ -209,13 +209,16 @@ enum Library {
 
 /// Runs the installed `cuvee` CLI, output appended to ~/Library/Logs/Cuvee.log.
 enum CLI {
-    static func run(_ args: [String], onExit: @escaping @Sendable (Int32) -> Void) throws {
+    /// `onExit` gets the exit code and, on a failure, what the CLI said when it gave up (its `cuvee: ...` line).
+    static func run(_ args: [String], onExit: @escaping @Sendable (Int32, String?) -> Void) throws {
         try FileManager.default.createDirectory(at: logFile.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if !FileManager.default.fileExists(atPath: logFile.path) {
-            FileManager.default.createFile(atPath: logFile.path, contents: nil)
-        }
-        let log = try FileHandle(forWritingTo: logFile)
-        log.seekToEndOfFile()
+        rotateLog()
+        // O_APPEND: several programs write this file at once (Steam for hours, then each command); without it every
+        // one kept its own position and wrote over the others
+        let fd = open(logFile.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+        guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        let log = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        let start = (try? log.seekToEnd()) ?? 0
         let process = Process()
         process.executableURL = URL(filePath: "/bin/bash")
         process.arguments = [cli.path] + args
@@ -223,8 +226,35 @@ enum CLI {
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = log
         process.standardError = log
-        process.terminationHandler = { onExit($0.terminationStatus) }
+        process.terminationHandler = { onExit($0.terminationStatus, $0.terminationStatus == 0 ? nil : reason(since: start)) }
         try process.run()
+    }
+
+    /// The last `cuvee: ...` line the log gained since `start`: why the command stopped ("bottle 'X' is running...").
+    private static func reason(since start: UInt64) -> String? {
+        guard let file = try? FileHandle(forReadingFrom: logFile) else { return nil }
+        defer { try? file.close() }
+        let size = (try? file.seekToEnd()) ?? 0
+        let from = start <= size ? start : 0   // the log was emptied meanwhile
+        try? file.seek(toOffset: max(from, size > 65536 ? size - 65536 : 0))
+        let text = String(decoding: (try? file.readToEnd()) ?? Data(), as: UTF8.self)
+        return text.split(separator: "\n").last { $0.hasPrefix("cuvee: ") }.map { String($0.dropFirst(7)) }
+    }
+
+    /// Steam's output is appended on every launch and nothing ever trimmed it (the log reached 10 GB, 13-11-2026).
+    /// Past 20 MB, the log is copied to Cuvee.old.log (replacing the previous one) and emptied in place.
+    /// Emptied, not renamed: a Steam still running kept writing to the renamed file, which grew without limit
+    /// (276 MB in a day, 14-11-2026); with O_APPEND it goes on in the emptied log.
+    // ponytail: checked only at launch, so one very long session can still grow past 20 MB until the next launch.
+    static let maxLogBytes = 20 * 1024 * 1024
+
+    static func rotateLog() {
+        let fm = FileManager.default
+        guard let size = (try? fm.attributesOfItem(atPath: logFile.path))?[.size] as? Int, size > maxLogBytes else { return }
+        let old = logFile.deletingLastPathComponent().appending(path: "Cuvee.old.log")
+        try? fm.removeItem(at: old)
+        try? fm.copyItem(at: logFile, to: old)   // an APFS clone: instant, no extra disk
+        truncate(logFile.path, 0)
     }
 
     static func args(for action: TileAction) -> [String] {
