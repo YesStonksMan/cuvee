@@ -63,6 +63,7 @@ struct BottlePage: View {
                     }
                 }
                 settings
+                locations
                 let running = model.open.contains(bottle.name)   // `cuvee remove` refuses a running bottle
                 Button(role: .destructive) { model.removing = bottle } label: {
                     Label(tr("Mettre à la Corbeille…", "Move to Trash…"), systemImage: "trash")
@@ -136,6 +137,33 @@ struct BottlePage: View {
                 .fixedSize(horizontal: false, vertical: true)
             if let chip = Device.chip, let rec = Device.recommended {
                 recommendation(chip: chip, graphics: rec.graphics, metalFX: rec.metalFX)
+            }
+        }
+    }
+
+    private var locations: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(tr("Emplacements", "Locations")).font(.title3.weight(.semibold))
+            Text(tr("Un dossier du Mac, sur un disque externe par exemple, devient un lecteur Windows de cette bouteille. Dans le lanceur, choisis ce lecteur comme dossier d'installation : les jeux iront dessus. Pris en compte au prochain démarrage de la bouteille.",
+                    "A Mac folder, on an external disk for example, becomes a Windows drive of this bottle. In the launcher, pick that drive as the install folder: the games go there. Applies from the next start of the bottle."))
+                .font(.callout).foregroundStyle(.secondary).frame(maxWidth: 520, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(bottle.drives) { drive in
+                HStack(spacing: 10) {
+                    Text("\(drive.letter):").font(.body.monospaced().bold())
+                    Text(drive.path).lineLimit(1).truncationMode(.middle).help(drive.path)
+                    if !drive.reachable {
+                        Text(tr("introuvable (disque débranché ?)", "not found (disk unplugged?)")).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 12)
+                    Button { model.removeDrive(drive, from: bottle) } label: { Image(systemName: "minus.circle") }
+                        .buttonStyle(.borderless)
+                        .help(tr("Retirer ce lecteur (le dossier et ses fichiers restent)", "Remove this drive (the folder and its files stay)"))
+                }
+                .frame(maxWidth: 620, alignment: .leading)
+            }
+            Button { model.addDrive(to: bottle) } label: {
+                Label(tr("Ajouter un emplacement…", "Add a location…"), systemImage: "externaldrive.badge.plus")
             }
         }
     }

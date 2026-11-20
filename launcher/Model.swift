@@ -148,13 +148,32 @@ final class LauncherModel: ObservableObject {
         if run(["run", bottle.name, exe.path], what: what, isLaunch: true) { startedHere.insert(bottle.name) }
     }
 
+    /// Pick a Mac folder (on an external disk, say) and make it a Windows drive of the bottle.
+    func addDrive(to bottle: Bottle) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.directoryURL = URL(filePath: "/Volumes")
+        panel.prompt = tr("Ajouter", "Add")
+        panel.message = tr("Choisis le dossier où « \(bottle.name) » pourra installer des jeux (sur un disque externe, par exemple)",
+                           "Choose the folder where “\(bottle.name)” can install games (on an external disk, for example)")
+        guard panel.runModal() == .OK, let dir = panel.url else { return }
+        run(["drive", bottle.name, dir.path], what: tr("Ajout de l'emplacement", "Adding the location"))
+    }
+
+    func removeDrive(_ drive: Drive, from bottle: Bottle) {
+        run(["undrive", bottle.name, drive.letter], what: tr("Retrait du lecteur \(drive.letter):", "Removing drive \(drive.letter):"))
+    }
+
     func remove(_ bottle: Bottle) {
         run(["remove", bottle.name], what: tr("Suppression de « \(bottle.name) »", "Removing “\(bottle.name)”"))
     }
 
     /// Shows the new settings at once, then writes them; a failed write reloads what is on disk.
     func save(_ bottle: Bottle, graphics: Graphics, metalFX: Bool) {
-        let updated = Bottle(name: bottle.name, launcher: bottle.launcher, graphics: graphics, metalFX: metalFX, tiles: bottle.tiles)
+        let updated = Bottle(name: bottle.name, launcher: bottle.launcher, graphics: graphics, metalFX: metalFX, tiles: bottle.tiles,
+                             drives: bottle.drives)
         bottles = bottles.map { $0.name == bottle.name ? updated : $0 }
         let what = tr("Réglages de « \(bottle.name) »", "Settings of “\(bottle.name)”")
         run(["set", bottle.name, "graphics", graphics.rawValue], what: what, refreshing: false) { ok in

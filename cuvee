@@ -11,6 +11,9 @@
 #   cuvee remove NAME              move bottle NAME to the Trash
 #   cuvee settings NAME            show the settings of bottle NAME
 #   cuvee set NAME KEY VALUE       graphics vulkan|opengl|dxmt, metalfx on|off (needs dxmt)
+#   cuvee drives NAME              list the Mac folders that are Windows drives of bottle NAME
+#   cuvee drive NAME FOLDER        make FOLDER (an external disk...) a drive of bottle NAME, next free letter
+#   cuvee undrive NAME LETTER      take that drive away (the folder and its files stay)
 #   cuvee import NAME              clone a CrossOver bottle (no extra disk)
 #   cuvee steam                    install (first time) and launch Steam in the bottle "Steam"
 #   cuvee game NAME APPID          launch Steam game APPID in bottle NAME (same path as Steam's Play button)
@@ -101,6 +104,53 @@ settings_cmd() {
   echo "metalfx=$(setting metalfx off)"
   [ -n "$(setting launcher)" ] && echo "launcher=$(setting launcher)"
   return 0
+}
+
+# --- drives: a Windows letter for a Mac folder, so a launcher can install games there ---
+# Wine letters only removable media by itself (mountmgr.sys/diskarb.c): a fixed external SSD gets none.
+# Ours are plain links in dosdevices; Wine's automatic ones come with an "x::" device link and are left to Wine.
+# Read by Wine when the bottle starts.
+
+upper() { echo "$1" | tr a-z A-Z; }
+
+drives_cmd() { # NAME -> "D: /folder" per drive added with `cuvee drive`
+  need_bottle "$1"
+  local l p
+  for l in {d..y}; do
+    p="$WINEPREFIX/dosdevices/$l:"
+    [ -L "$p" ] && [ ! -L "$p:" ] && echo "$(upper "$l"): $(readlink "$p")"
+  done
+  return 0
+}
+
+drive_cmd() { # NAME FOLDER
+  need_bottle "$1"
+  [ -n "${2:-}" ] || die "usage: cuvee drive NAME FOLDER"
+  [ -d "$2" ] || die "no folder '$2' (is the disk plugged in?)"
+  local dir l p
+  dir="$(cd "$2" && pwd -P)" || die "cannot open '$2'"
+  for l in {d..y}; do
+    [ "$(readlink "$WINEPREFIX/dosdevices/$l:" 2>/dev/null)" = "$dir" ] && { echo "$(upper "$l"): $dir (already)"; return; }
+  done
+  for l in {d..y}; do
+    p="$WINEPREFIX/dosdevices/$l:"
+    [ -e "$p" ] || [ -L "$p" ] || [ -L "$p:" ] && continue   # taken, or kept by Wine for a removable disk
+    ln -s "$dir" "$p"
+    echo "$(upper "$l"): $dir"
+    return
+  done
+  die "no free drive letter left in '$1'"
+}
+
+undrive_cmd() { # NAME LETTER
+  need_bottle "$1"
+  local l p
+  l="$(echo "${2:-}" | tr A-Z a-z | tr -d :)"
+  p="$WINEPREFIX/dosdevices/$l:"
+  case "$l" in [d-y]) ;; *) die "usage: cuvee undrive NAME LETTER (D to Y)" ;; esac
+  [ -L "$p" ] && [ ! -L "$p:" ] || die "$(upper "$l"): is not a drive added with cuvee drive"
+  rm "$p"   # the link only: the folder and the games in it stay
+  echo "$(upper "$l"): removed"
 }
 
 # --- bottles ---
@@ -269,6 +319,9 @@ case "${1:-}" in
   remove)    remove "${2:-}" ;;
   settings)  settings_cmd "${2:-}" ;;
   set)       set_cmd "${2:-}" "${3:-}" "${4:-}" ;;
+  drives)    drives_cmd "${2:-}" ;;
+  drive)     drive_cmd "${2:-}" "${3:-}" ;;
+  undrive)   undrive_cmd "${2:-}" "${3:-}" ;;
   steam)     add steam; open_cmd Steam ;;
   game)      need_bottle "${2:-}"; [[ "${3:-}" =~ ^[0-9]+$ ]] || die "steam appid required"
              [ -f "$WINEPREFIX/drive_c/Program Files (x86)/Steam/steam.exe" ] || die "no Steam in bottle '$2'"
@@ -281,5 +334,5 @@ case "${1:-}" in
              "$WINE" wineboot --end-session --force --shutdown || die "a program in '$2' refused to quit: close it first"
              exec "$HERE/dist/bin/wineserver" -k ;;
   kill)      need_bottle "${2:-}"; exec "$HERE/dist/bin/wineserver" -k ;;
-  *)         sed -n '3,19p' "$0"; exit 1 ;;
+  *)         sed -n '3,23p' "$0"; exit 1 ;;
 esac
