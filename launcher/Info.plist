@@ -12,4 +12,5 @@
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSMicrophoneUsageDescription</key><string>Games running in Cuvee use the microphone for voice chat.</string>
+  <key>NSRemovableVolumesUsageDescription</key><string>Games and launchers in Cuvee can be installed on an external disk.</string>
 </dict></plist>

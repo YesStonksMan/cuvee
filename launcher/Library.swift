@@ -72,12 +72,21 @@ struct Tile: Identifiable, Equatable {
     static func == (a: Tile, b: Tile) -> Bool { a.id == b.id && a.name == b.name && a.art == b.art }
 }
 
+/// A Mac folder the bottle sees as a Windows drive (`cuvee drive`), e.g. on an external disk.
+struct Drive: Identifiable, Equatable {
+    let letter: String   // "D"
+    let path: String
+    var id: String { letter }
+    var reachable: Bool { FileManager.default.fileExists(atPath: path) }   // false: the disk is unplugged
+}
+
 struct Bottle: Identifiable, Equatable {
     let name: String
     let launcher: String?
     let graphics: Graphics
     let metalFX: Bool
     let tiles: [Tile]
+    let drives: [Drive]
     var id: String { name }
     var opener: Tile? { tiles.first { if case .open = $0.action { true } else { false } } }
     var games: [Tile] { tiles.filter { if case .game = $0.action { true } else { false } } }
@@ -109,9 +118,26 @@ enum Library {
             let art = launcher == "steam" ? steamDir.appending(path: "public/steam_tray.ico") : nil
             tiles.append(Tile(id: "\(name)/open", name: launcher == "steam" ? "Steam" : name, art: art, action: .open(bottle: name)))
         }
-        if hasSteam { tiles += games(bottle: name, steamDir: steamDir) }
+        if hasSteam { tiles += games(bottle: dir, steamDir: steamDir) }
         return Bottle(name: name, launcher: launcher, graphics: Graphics(rawValue: conf["graphics"] ?? "") ?? .fallback,
-                      metalFX: conf["metalfx"] == "on", tiles: tiles)
+                      metalFX: conf["metalfx"] == "on", tiles: tiles, drives: drives(dir))
+    }
+
+    /// Same rule as `drives_cmd` in the cuvee script: a D:-Y: link without Wine's "x::" device link.
+    private static func drives(_ dir: URL) -> [Drive] {
+        "defghijklmnopqrstuvwxy".compactMap { letter in
+            let link = dir.appending(path: "dosdevices/\(letter):").path
+            guard let path = try? FileManager.default.destinationOfSymbolicLink(atPath: link),
+                  (try? FileManager.default.destinationOfSymbolicLink(atPath: link + ":")) == nil else { return nil }
+            return Drive(letter: String(letter).uppercased(), path: path)
+        }
+    }
+
+    /// A Windows path of the bottle ("D:\\SteamLibrary") as a Mac path, through its dosdevices links.
+    private static func unixPath(_ windows: String, bottle dir: URL) -> URL? {
+        guard let letter = windows.first?.lowercased(), windows.dropFirst().hasPrefix(":") else { return nil }
+        let root = dir.appending(path: "dosdevices/\(letter):").resolvingSymlinksInPath()
+        return windows.dropFirst(2).split(separator: "\\").reduce(root) { $0.appending(path: String($1)) }
     }
 
     private static func settings(_ dir: URL) -> [String: String] {
@@ -124,12 +150,21 @@ enum Library {
         return values
     }
 
-    private static func games(bottle: String, steamDir: URL) -> [Tile] {
-        let files = (try? FileManager.default.contentsOfDirectory(at: steamDir.appending(path: "steamapps"),
-                                                                  includingPropertiesForKeys: nil)) ?? []
+    /// Games of every Steam library folder: Steam's own, plus those added in Steam (an external disk's drive).
+    private static func games(bottle dir: URL, steamDir: URL) -> [Tile] {
+        let vdf = (try? String(contentsOf: steamDir.appending(path: "steamapps/libraryfolders.vdf"), encoding: .utf8)) ?? ""
+        let others = vdf.matches(of: #/"path"\s+"([^"]+)"/#)
+            .compactMap { unixPath($0.1.replacingOccurrences(of: "\\\\", with: "\\"), bottle: dir) }
+        var seen = Set<String>()
+        let libraries = ([steamDir] + others).map { $0.resolvingSymlinksInPath() }.filter { seen.insert($0.path).inserted }
+        let files = libraries.flatMap {
+            (try? FileManager.default.contentsOfDirectory(at: $0.appending(path: "steamapps"), includingPropertiesForKeys: nil)) ?? []
+        }
+        var ids = Set<String>()
         return files
             .filter { $0.lastPathComponent.hasPrefix("appmanifest_") && $0.pathExtension == "acf" }
-            .compactMap { manifest($0, bottle: bottle, steamDir: steamDir) }
+            .compactMap { manifest($0, bottle: dir.lastPathComponent, steamDir: steamDir) }
+            .filter { ids.insert($0.id).inserted }   // one tile per game, even if two libraries list it
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
