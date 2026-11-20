@@ -71,6 +71,7 @@ apply_settings() { # environment for the bottle's settings and launcher, read at
     opengl) export WINE_D3D_CONFIG="renderer=gl" ;;
     dxmt)   [ -d "$HERE/dist/lib/dxmt" ] || die "DXMT is not installed in this build (see README)"
             export WINEDLLPATH_PREPEND="$HERE/dist/lib/dxmt"   # DXMT's d3d11/dxgi/d3d10core/nvngx before wined3d's
+            export CUVEE_CEF_GPU=1   # Steam's web views draw on the GPU through DXMT (kernelbase drops --disable-gpu)
             [ "$(setting metalfx off)" = on ] && export DXMT_METALFX_SPATIAL_SWAPCHAIN=1
             if [ -d "$HERE/dist/lib/vkd3d-proton" ]; then
               # Direct3D 12 programs get VKD3D-Proton + DXVK's dxgi (see build-vkd3d-proton.sh), on its MoltenVK;

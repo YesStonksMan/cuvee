@@ -1,6 +1,6 @@
 --- a/dlls/kernelbase/process.c
 +++ b/dlls/kernelbase/process.c
-@@ -564,6 +564,40 @@
+@@ -564,6 +564,46 @@
              FIXME("HACK: not starting powershell.exe.\n");
              SetLastError( ERROR_FILE_NOT_FOUND );
              return FALSE;
@@ -11,7 +11,8 @@
 +    {
 +        static const struct { const WCHAR *exe, *flags; } extra[] =
 +        {
-+            /* CEF renders black unless every helper gets these (same flags as Proton's steamwebhelper hack) */
++            /* CEF renders black unless every helper gets these (same flags as Proton's steamwebhelper hack);
++             * a GPU process of its own cannot draw into the browser's window (eglCreateWindowSurface EGL_BAD_ALLOC) */
 +            { L"steamwebhelper.exe", L" --no-sandbox --in-process-gpu --disable-gpu" },
 +            /* Battle.net's CEF renderer hits a CHECK (int3) inside the Chromium sandbox under Wine */
 +            { L"Battle.net.exe", L" --no-sandbox --in-process-gpu --disable-gpu" },
@@ -29,11 +30,16 @@
 +        for (s = app_name; *s; s++) if (*s == '\\' || *s == '/') base = s + 1;
 +        for (i = 0; i < ARRAY_SIZE(extra); i++)
 +        {
++            const WCHAR *flags = extra[i].flags;
 +            if (wcsicmp( base, extra[i].exe )) continue;
-+            len = lstrlenW( tidy_cmdline ) + lstrlenW( extra[i].flags ) + 1;
++            /* with DXMT (cuvee sets CUVEE_CEF_GPU), Steam's CEF can draw on the GPU in its own process: software
++             * rendering of a large window drops scrolling to ~45 fps with 50-150 ms hitches, GPU keeps it at 80-120 */
++            if (!wcsicmp( base, L"steamwebhelper.exe" ) && GetEnvironmentVariableW( L"CUVEE_CEF_GPU", NULL, 0 ))
++                flags = L" --no-sandbox --in-process-gpu";
++            len = lstrlenW( tidy_cmdline ) + lstrlenW( flags ) + 1;
 +            if (!(new_cmdline = HeapAlloc( GetProcessHeap(), 0, len * sizeof(WCHAR) ))) break;
 +            lstrcpyW( new_cmdline, tidy_cmdline );
-+            lstrcatW( new_cmdline, extra[i].flags );
++            lstrcatW( new_cmdline, flags );
 +            if (tidy_cmdline != cmd_line) HeapFree( GetProcessHeap(), 0, tidy_cmdline );
 +            tidy_cmdline = new_cmdline;
 +            TRACE( "%s cmdline %s\n", debugstr_w(base), debugstr_w(tidy_cmdline) );

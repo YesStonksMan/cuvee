@@ -5,6 +5,9 @@
 - Locations: a Mac folder (an external disk, say) can become a Windows drive of a bottle, so launchers install games
   there (`cuvee drive`, `cuvee drives`, `cuvee undrive`; "Locations" on the bottle page). Wine itself only gives a
   letter to removable media, not to a fixed external SSD. Steam games in extra library folders now show in the app.
+- Steam: in Metal (DXMT) bottles the client's web views draw on the GPU instead of the CPU. Scrolling the store went
+  from 40-55 to 80-120 frames per second, and pauses of more than 33 ms dropped from 216 to 22 (2560×1321 window,
+  120 Hz screen). OpenGL/Vulkan bottles keep CPU rendering (`patches/steam-cmdline-flags.patch`, `CUVEE_CEF_GPU`).
 
 ## 1.1.1 — 2026-11-15 (preview)
 
