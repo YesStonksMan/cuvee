@@ -1,0 +1,20 @@
+--- a/loader/wine.inf.in
++++ b/loader/wine.inf.in
+@@ -731,6 +731,8 @@
+ 11,,start.exe
+ 11,,winhlp32.exe
+ 52,win40\0,wineps16.drv,wineps16.drv16
++; cuvee: DXMT's winemetal.dll, found through WINEDLLPATH_PREPEND, loads only with a placeholder in the prefix
++11,,winemetal.dll,*
+ 
+ ; 64bit-only fake dlls
+ [FakeDllsWin64]
+@@ -740,6 +742,8 @@
+ 11,,atidxx64.dll,*
+ 11,,nvapi64.dll,*
+ 11,,nvngx.dll,*
++; cuvee: DXMT's winemetal.dll (see FakeDllsWin32)
++11,,winemetal.dll,*
+ 
+ ; Wow64-only fake dlls
+ [FakeDllsWow64]

@@ -5,6 +5,10 @@
 - Locations: a Mac folder (an external disk, say) can become a Windows drive of a bottle, so launchers install games
   there (`cuvee drive`, `cuvee drives`, `cuvee undrive`; "Locations" on the bottle page). Wine itself only gives a
   letter to removable media, not to a fixed external SSD. Steam games in extra library folders now show in the app.
+- Metal (DXMT): works in bottles made by Cuvee. Wine loads DXMT's `winemetal.dll` only if the bottle holds a
+  placeholder for it, and only bottles imported from CrossOver had one: elsewhere every Direct3D 10/11 program failed
+  to load `d3d11.dll` (Battle.net: "Impossible de lancer Battle.net."). Wine now creates the placeholder, and existing
+  bottles get it at their next launch (`patches/dxmt-winemetal-placeholder.patch`).
 
 ## 1.1.1 — 2026-11-15 (preview)
 
