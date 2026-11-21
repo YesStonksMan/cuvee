@@ -1,0 +1,41 @@
+diff --git a/libs/vkd3d/resource.c b/libs/vkd3d/resource.c
+index 26db9ce4..87d1dceb 100644
+--- a/libs/vkd3d/resource.c
++++ b/libs/vkd3d/resource.c
+@@ -6493,6 +6494,9 @@ static struct vkd3d_view_map *vkd3d_msc_resource_view_map(struct d3d12_device *d
+     return map;
+ }
+ 
++/* Metal's own texel buffer width limit (MTLTextureDescriptor validation), above MoltenVK's reported 2^26. */
++#define VKD3D_METAL_MAX_TEXEL_BUFFER_ELEMENTS (1u << 28)
++
+ static struct vkd3d_view *vkd3d_msc_typed_view(struct d3d12_device *device, struct d3d12_resource *resource,
+         DXGI_FORMAT format, unsigned int vk_flags, uint64_t first_element, uint64_t num_elements,
+         uint32_t structure_stride, VkDescriptorType vk_descriptor_type, uint64_t *handle)
+@@ -6526,6 +6530,8 @@ static struct vkd3d_view *vkd3d_msc_typed_view(struct d3d12_device *device, stru
+         element_size = vkd3d_format->byte_count;
+     if (!vkd3d_format)
+         return NULL;
++    /* Same clamp as vkd3d_buffer_view_get_aligned_view(): Metal aborts on a texel view wider than its limit. */
++    num_elements = min(num_elements, (uint64_t)VKD3D_METAL_MAX_TEXEL_BUFFER_ELEMENTS);
+ 
+     key.view_type = VKD3D_VIEW_TYPE_BUFFER;
+     key.u.buffer.buffer = resource->res.vk_buffer;
+@@ -6600,8 +6606,15 @@ static bool vkd3d_buffer_view_get_aligned_view(
+ 
+         if (num_elements > max_elements)
+         {
+-            FIXME("Application is attempting to use more elements in a typed buffer (%llu) than supported by device (%llu).\n",
+-                  (unsigned long long)num_elements, (unsigned long long)max_elements);
++            FIXME("Application is attempting to use more elements in a typed buffer (%llu) than supported by device (%llu), "
++                  "format %#x, stride %llu, flags %#x, resource width %llu, first %llu.\n",
++                  (unsigned long long)num_elements, (unsigned long long)max_elements, format,
++                  (unsigned long long)structured_stride, vk_flags, (unsigned long long)resource->desc.Width,
++                  (unsigned long long)first_element);
++            /* Clamp the view to the device limit: MoltenVK turns the buffer view into an MTLTexture of that width,
++             * and Metal aborts the process above its own limit (ARK: Survival Ascended asks for 2^29 elements).
++             * Reads past the limit then return 0 through the bounds check instead. */
++            num_elements = min(num_elements, (VkDeviceSize)VKD3D_METAL_MAX_TEXEL_BUFFER_ELEMENTS);
+             bound_range->element_offset = 0;
+             bound_range->element_count = num_elements;
+         }

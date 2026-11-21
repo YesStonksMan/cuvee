@@ -5,6 +5,10 @@
 - Locations: a Mac folder (an external disk, say) can become a Windows drive of a bottle, so launchers install games
   there (`cuvee drive`, `cuvee drives`, `cuvee undrive`; "Locations" on the bottle page). Wine itself only gives a
   letter to removable media, not to a fixed external SSD. Steam games in extra library folders now show in the app.
+- Direct3D 12 (developer runtime): VKD3D-Proton-MacOS 6.0 instead of 4.5, so Unreal Engine 5 games start
+  (ARK: Survival Ascended runs with `-dx12`). Two fixes of ours on top: a typed buffer view wider than Metal's limit
+  is clamped instead of aborting the process, and a shared resource no longer calls a Windows-only Vulkan export
+  that MoltenVK lacks (null call at start).
 
 ## 1.1.1 — 2026-11-15 (preview)
 
